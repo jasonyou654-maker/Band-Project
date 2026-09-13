@@ -27,16 +27,23 @@ test("server renders the BandProject community", async () => {
   assert.doesNotMatch(html, /codex-preview/i);
 });
 
-test("OMR API exposes an explicit MusicXML fallback when no processor is configured", async () => {
+test("OMR API refuses to publish a fake score when no processor is configured", async () => {
   const app = await worker();
   const body = new FormData();
   body.append("file", new Blob(["not-a-real-image"], { type: "image/png" }), "score.png");
   const response = await app.fetch(new Request("http://localhost/api/omr", { method: "POST", body }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
   const payload = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(payload.mode, "fallback");
-  assert.match(payload.musicXml, /<score-partwise/);
-  assert.match(payload.warnings[0], /not configured/i);
+  assert.equal(response.status, 503);
+  assert.match(payload.error, /not configured/i);
+  assert.equal(payload.musicXml, undefined);
+});
+
+test("OMR API rejects unsupported score formats before contacting a processor", async () => {
+  const app = await worker();
+  const body = new FormData();
+  body.append("file", new Blob(["hello"], { type: "text/plain" }), "notes.txt");
+  const response = await app.fetch(new Request("http://localhost/api/omr", { method: "POST", body }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
+  assert.equal(response.status, 415);
 });
 
 test("transcription API exposes an explicit fallback instead of claiming Basic Pitch ran", async () => {

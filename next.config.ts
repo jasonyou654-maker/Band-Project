@@ -1,12 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // GitHub Pages serves this project from /Band-Project rather than a custom
-  // application server. Keep the normal server-capable build unchanged.
+  // GitHub Pages is rendered into a project-site artifact by
+  // scripts/render-pages.sh. Vinext currently serves the route at `/`, so the
+  // renderer applies the repository prefix to the generated asset URLs.
   ...(process.env.GITHUB_PAGES === "true"
     ? {
         output: "export",
-        basePath: "/Band-Project",
         trailingSlash: true,
       }
     : {}),

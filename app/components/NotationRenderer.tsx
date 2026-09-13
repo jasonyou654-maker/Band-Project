@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { hasEncodedSourceLayout } from "../lib/musicxml";
 
-export function NotationRenderer({ musicXml, title, preserveSourceLayout = false }: { musicXml: string; title: string; preserveSourceLayout?: boolean }) {
+type NotationRendererProps = {
+  musicXml: string;
+  title: string;
+  preserveSourceLayout?: boolean;
+  thumbnail?: boolean;
+};
+
+export function NotationRenderer({ musicXml, title, preserveSourceLayout = false, thumbnail = false }: NotationRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const sourceLayout = preserveSourceLayout || hasEncodedSourceLayout(musicXml);
@@ -19,11 +26,11 @@ export function NotationRenderer({ musicXml, title, preserveSourceLayout = false
         setError("");
         const score = new OpenSheetMusicDisplay(hostRef.current, {
           autoResize: true, backend: "svg", drawTitle: false, drawComposer: false,
-          drawingParameters: sourceLayout ? "default" : "compacttight",
-          pageFormat: sourceLayout ? "A4_P" : "Endless",
-          newSystemFromXML: sourceLayout,
-          newPageFromXML: sourceLayout,
-          newSystemFromNewPageInXML: sourceLayout,
+          drawingParameters: sourceLayout && !thumbnail ? "default" : "compacttight",
+          pageFormat: sourceLayout && !thumbnail ? "A4_P" : "Endless",
+          newSystemFromXML: sourceLayout && !thumbnail,
+          newPageFromXML: sourceLayout && !thumbnail,
+          newSystemFromNewPageInXML: sourceLayout && !thumbnail,
           setWantedStemDirectionByXml: true,
         });
         await score.load(musicXml);
@@ -34,7 +41,7 @@ export function NotationRenderer({ musicXml, title, preserveSourceLayout = false
     }
     void render();
     return () => { cancelled = true; };
-  }, [musicXml, preserveSourceLayout]);
+  }, [musicXml, sourceLayout, thumbnail]);
 
-  return <div ref={hostRef} className={`osmd-host ${sourceLayout ? "source-layout" : ""}`} aria-label={`${title} 的五线谱`}>{error && <p className="notation-error">{error}</p>}</div>;
+  return <div ref={hostRef} className={`osmd-host ${sourceLayout && !thumbnail ? "source-layout" : ""} ${thumbnail ? "thumbnail-score" : ""}`} aria-label={`${title} 的五线谱`}>{error && <p className="notation-error">{error}</p>}</div>;
 }

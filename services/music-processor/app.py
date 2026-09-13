@@ -40,8 +40,8 @@ def health() -> dict:
 async def omr(file: UploadFile = File(...)) -> dict:
     content = await limited_read(file, MAX_SCORE_BYTES)
     suffix = Path(file.filename or "score.pdf").suffix.lower()
-    if suffix not in {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
-        raise HTTPException(415, "Audiveris accepts PDF, PNG, JPG, and TIFF files.")
+    if suffix not in {".pdf", ".png", ".jpg", ".jpeg"}:
+        raise HTTPException(415, "Audiveris accepts PDF, PNG, JPG, and JPEG files.")
     executable = shutil.which(AUDIVERIS_COMMAND)
     if not executable:
         raise HTTPException(503, "Audiveris is not installed in the processing service image.")

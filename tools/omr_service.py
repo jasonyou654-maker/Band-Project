@@ -18,7 +18,7 @@ APP = ROOT / "tools" / "Audiveris.app" / "Contents"
 JAVA = APP / "runtime" / "Contents" / "Home" / "bin" / "java"
 WORK = ROOT / "tools" / "omr-work"
 MAX_BYTES = 25 * 1024 * 1024
-ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff"}
+ALLOWED_SUFFIXES = {".pdf", ".png", ".jpg", ".jpeg"}
 
 
 def prepare_runtime() -> None:
@@ -37,7 +37,8 @@ class Handler(BaseHTTPRequestHandler):
     def end_headers(self) -> None:
         origin = self.headers.get("Origin", "")
         hostname = urlparse(origin).hostname
-        if hostname in {"localhost", "127.0.0.1", "::1"}:
+        configured_origins = {item.strip() for item in os.getenv("WEB_ORIGINS", "").split(",") if item.strip()}
+        if hostname in {"localhost", "127.0.0.1", "::1"} or origin in configured_origins:
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS, GET")
@@ -63,7 +64,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(404, {"error": "Not found"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/convert":
+        if self.path not in {"/omr", "/convert"}:
             self.send_json(404, {"error": "Not found"})
             return
         if not JAVA.exists():
@@ -87,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             suffix = Path(upload.filename).suffix.lower()
             if suffix not in ALLOWED_SUFFIXES:
-                self.send_json(415, {"error": "支持 PDF、PNG、JPG、JPEG、TIF 和 TIFF。"})
+                self.send_json(415, {"error": "支持 PDF、PNG、JPG 和 JPEG。"})
                 return
             WORK.mkdir(parents=True, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="score-", dir=WORK) as temp:
@@ -115,10 +116,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": "本地识谱服务发生错误。", "detail": str(error)})
 
     def log_message(self, format: str, *args: object) -> None:
-        print(f"[Scorebench OMR] {format % args}")
+        print(f"[BandProject OMR] {format % args}")
 
 
 if __name__ == "__main__":
     prepare_runtime()
-    print("Scorebench OMR service ready at http://127.0.0.1:4318")
+    print("BandProject OMR service ready at http://127.0.0.1:4318")
     ThreadingHTTPServer(("127.0.0.1", 4318), Handler).serve_forever()

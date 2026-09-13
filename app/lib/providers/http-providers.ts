@@ -23,9 +23,12 @@ export class HttpTranscriptionProvider extends HttpProcessingProvider implements
   transcribe(file: File) { return this.process(file); }
 }
 
-export class FallbackOMRProvider implements OMRProvider {
-  readonly name = "OMR fallback";
-  async recognize(file: File) { return fallback(file, "OMR processor is not configured. This preview is a clearly marked sample score, not a recognition result."); }
+export class UnavailableOMRProvider implements OMRProvider {
+  readonly name = "OMR unavailable";
+  async recognize(file: File): Promise<MusicProcessingResult> {
+    void file;
+    throw new Error("OMR processor is not configured. Set MUSIC_PROCESSOR_URL to a running BandProject music processor.");
+  }
 }
 
 export class FallbackTranscriptionProvider implements TranscriptionProvider {
