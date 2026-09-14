@@ -7,16 +7,20 @@ replaced or replaced without changing the UI.
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import os
 import shutil
 import subprocess
 import tempfile
+from threading import Lock
+from uuid import uuid4
 import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 app = FastAPI(title="BandProject Music Processor", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WEB_ORIGINS", "http://localhost:3000,http://localhost:3001").split(","), allow_methods=["POST", "GET"], allow_headers=["*"])
@@ -24,6 +28,9 @@ app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WEB_ORIGINS", "http:
 AUDIVERIS_COMMAND = os.getenv("AUDIVERIS_COMMAND", "audiveris")
 MAX_SCORE_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_BYTES = 50 * 1024 * 1024
+OMR_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bandproject-omr")
+OMR_JOBS: dict[str, dict] = {}
+OMR_JOBS_LOCK = Lock()
 
 
 @app.get("/health")
@@ -40,8 +47,61 @@ def health() -> dict:
 async def omr(file: UploadFile = File(...)) -> dict:
     content = await limited_read(file, MAX_SCORE_BYTES)
     suffix = Path(file.filename or "score.pdf").suffix.lower()
+    validate_score_suffix(suffix)
+    return recognize_with_audiveris(content, suffix)
+
+
+@app.post("/omr/jobs", status_code=202)
+async def create_omr_job(file: UploadFile = File(...)) -> dict:
+    """Queue long OMR jobs so Render's HTTP proxy does not time out."""
+    content = await limited_read(file, MAX_SCORE_BYTES)
+    suffix = Path(file.filename or "score.pdf").suffix.lower()
+    validate_score_suffix(suffix)
+    if not shutil.which(AUDIVERIS_COMMAND):
+        raise HTTPException(503, "Audiveris is not installed in the processing service image.")
+    job_id = uuid4().hex
+    with OMR_JOBS_LOCK:
+        OMR_JOBS[job_id] = {"status": "queued"}
+    OMR_EXECUTOR.submit(run_omr_job, job_id, content, suffix)
+    return {"jobId": job_id, "status": "queued"}
+
+
+@app.get("/omr/jobs/{job_id}")
+def get_omr_job(job_id: str):
+    with OMR_JOBS_LOCK:
+        job = OMR_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, "OMR job not found. It may have expired after a service restart.")
+    if job["status"] == "failed":
+        return JSONResponse(status_code=422, content={"status": "failed", "error": job["error"]})
+    if job["status"] != "completed":
+        return {"status": job["status"]}
+    return {"status": "completed", **job["result"]}
+
+
+def run_omr_job(job_id: str, content: bytes, suffix: str) -> None:
+    with OMR_JOBS_LOCK:
+        OMR_JOBS[job_id] = {"status": "processing"}
+    try:
+        result = recognize_with_audiveris(content, suffix)
+    except HTTPException as error:
+        with OMR_JOBS_LOCK:
+            OMR_JOBS[job_id] = {"status": "failed", "error": str(error.detail)}
+        return
+    except Exception as error:
+        with OMR_JOBS_LOCK:
+            OMR_JOBS[job_id] = {"status": "failed", "error": f"Audiveris processing failed: {error}"}
+        return
+    with OMR_JOBS_LOCK:
+        OMR_JOBS[job_id] = {"status": "completed", "result": result}
+
+
+def validate_score_suffix(suffix: str) -> None:
     if suffix not in {".pdf", ".png", ".jpg", ".jpeg"}:
         raise HTTPException(415, "Audiveris accepts PDF, PNG, JPG, and JPEG files.")
+
+
+def recognize_with_audiveris(content: bytes, suffix: str) -> dict:
     executable = shutil.which(AUDIVERIS_COMMAND)
     if not executable:
         raise HTTPException(503, "Audiveris is not installed in the processing service image.")

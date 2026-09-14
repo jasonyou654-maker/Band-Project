@@ -20,9 +20,13 @@ export async function recognizeScoreInBrowser(file: File): Promise<MusicProcessi
     const binary = binarize(image.data, canvas.width, canvas.height);
     const staves = detectStaves(binary, canvas.width, canvas.height);
     staffCount += staves.length;
-    const grandStaff = staves.length >= 2 && staves.length % 2 === 0;
+    // Several systems on one page are not a piano grand staff. Only treat
+    // adjacent staves as treble/bass when they are close enough to belong to
+    // the same system; the sample score has one staff per system with much
+    // larger gaps between systems.
+    const grandStaff = isGrandStaff(staves);
     staves.forEach((staff, staffIndex) => {
-      groups.push(...detectNotes(binary, canvas.width, staff, pageIndex, staffIndex, grandStaff && staffIndex % 2 === 1));
+      groups.push(...detectNotes(binary, canvas.width, staff, pageIndex, grandStaff && staffIndex % 2 === 1 ? 1 : 0));
     });
   }
 
@@ -176,10 +180,16 @@ function staffExtents(binary: Uint8Array, width: number, lines: number[]) {
   return { left, right };
 }
 
-function detectNotes(binary: Uint8Array, width: number, staff: Staff, page: number, staffIndex: number, bass: boolean): NoteGroup[] {
+function isGrandStaff(staves: Staff[]): boolean {
+  if (staves.length < 2 || staves.length % 2 !== 0) return false;
+  const spacing = staves[0].spacing;
+  return staves.every((staff, index) => index % 2 === 0 || staff.lines[0] - staves[index - 1].lines[4] < spacing * 8);
+}
+
+function detectNotes(binary: Uint8Array, width: number, staff: Staff, page: number, staffPart: number): NoteGroup[] {
   const spacing = staff.spacing;
   const radiusX = Math.max(3, Math.round(spacing * .62));
-  const radiusY = Math.max(2, Math.round(spacing * .38));
+  const radiusY = Math.max(2, Math.round(spacing * .42));
   const firstX = Math.round(staff.left + spacing * 5.5);
   const lastX = Math.round(staff.right - spacing);
   const candidates: { x: number; position: number; score: number }[] = [];
@@ -187,8 +197,11 @@ function detectNotes(binary: Uint8Array, width: number, staff: Staff, page: numb
   staff.lines.forEach(line => { lineRows.add(Math.round(line) - 1); lineRows.add(Math.round(line)); lineRows.add(Math.round(line) + 1); });
 
   for (let x = firstX; x <= lastX; x += Math.max(1, Math.round(spacing * .22))) {
-    for (let position = -4; position <= 12; position += 1) {
+    // Include ledger lines/chords above and below the staff. The old range
+    // clipped the low stacked chords visible throughout the reference page.
+    for (let position = -8; position <= 24; position += 1) {
       const centerY = Math.round(staff.lines[0] + position * spacing / 2);
+      if (centerY < 2 || centerY >= binary.length / width - 2) continue;
       let ink = 0, area = 0;
       for (let y = centerY - radiusY; y <= centerY + radiusY; y += 1) {
         if (y < 0 || lineRows.has(y)) continue;
@@ -198,7 +211,11 @@ function detectNotes(binary: Uint8Array, width: number, staff: Staff, page: numb
         }
       }
       const score = area ? ink / area : 0;
-      if (score > .29) candidates.push({ x, position, score });
+      const horizontalSupport = noteheadHorizontalSupport(binary, width, centerY, x, radiusX, staff.lines);
+      // Stems and barlines are tall but narrow. A real notehead has a broad
+      // dark run through its centre, which makes this filter substantially
+      // less sensitive to the vertical marks in engraved scans.
+      if (score > .24 && horizontalSupport > .34) candidates.push({ x, position, score: score + horizontalSupport * .2 });
     }
   }
 
@@ -213,12 +230,26 @@ function detectNotes(binary: Uint8Array, width: number, staff: Staff, page: numb
   const groups: NoteGroup[] = [];
   for (const candidate of selected) {
     let group = groups.find(item => Math.abs(item.x - candidate.x) < spacing * .8);
-    const pitch = diatonicToMidi((bass ? BASS_TOP_DIATONIC : TREBLE_TOP_DIATONIC) - candidate.position);
-    if (!group) { group = { pitches: [], page, staff: staffIndex, x: candidate.x }; groups.push(group); }
+    const pitch = diatonicToMidi((staffPart === 1 ? BASS_TOP_DIATONIC : TREBLE_TOP_DIATONIC) - candidate.position);
+    if (!group) { group = { pitches: [], page, staff: staffPart, x: candidate.x }; groups.push(group); }
     if (!group.pitches.some(existing => Math.abs(existing - pitch) < 2)) group.pitches.push(pitch);
   }
   groups.forEach(group => group.pitches.sort((a, b) => a - b));
   return groups.filter(group => group.pitches.length <= 5);
+}
+
+function noteheadHorizontalSupport(binary: Uint8Array, width: number, y: number, x: number, radius: number, staffLines: number[]): number {
+  let best = 0;
+  for (let row = Math.max(0, y - 2); row <= Math.min(binary.length / width - 1, y + 2); row += 1) {
+    if (staffLines.some(line => Math.abs(row - line) <= 1)) continue;
+    let run = 0;
+    for (let px = Math.max(0, x - radius); px <= Math.min(width - 1, x + radius); px += 1) {
+      if (binary[row * width + px]) run += 1;
+      else run = 0;
+      best = Math.max(best, run);
+    }
+  }
+  return best / Math.max(1, radius * 2);
 }
 
 function diatonicToMidi(diatonic: number): number {

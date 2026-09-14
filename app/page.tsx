@@ -17,6 +17,11 @@ type Sheet = {
   musicXml?: string; processingMode?: "real" | "fallback"; processingProvider?: string; processingWarnings?: string[];
 };
 
+function isTrustedScore(sheet: Sheet): boolean {
+  if (!sheet.musicXml) return true;
+  return sheet.processingProvider?.includes("Audiveris") === true || sheet.processingProvider === "Direct MusicXML upload";
+}
+
 const sheets: Sheet[] = [
   { id: 1, title: "Just the Two of Us", artist: "Grover Washington Jr.", instrument: "Piano", difficulty: "Intermediate", key: "F minor", bpm: 96, genre: "R&B / Soul", uploader: "Maya Chen", avatar: "MC", likes: 824, saves: 312, downloads: 1204, accent: "#e7a449", featured: true },
   { id: 2, title: "Nights", artist: "Frank Ocean", instrument: "Guitar", difficulty: "Intermediate", key: "E major", bpm: 89, genre: "Alternative R&B", uploader: "Noah Williams", avatar: "NW", likes: 641, saves: 278, downloads: 892, accent: "#8eb89b" },
@@ -45,6 +50,25 @@ function ScorePreview({ sheet }: { sheet: Sheet }) {
     <div className="sheet-heading"><span>{sheet.title.toUpperCase()}</span><small>{sheet.artist}</small></div>
     <div className="score-preview-notation"><NotationRenderer thumbnail title={sheet.title} musicXml={musicXml}/></div>
   </div>;
+}
+
+function scoreFeatureSummary(musicXml: string) {
+  const count = (pattern: RegExp) => musicXml.match(pattern)?.length || 0;
+  const typeCount = (type: string) => count(new RegExp(`<type>${type}</type>`, "gi"));
+  return {
+    eighth: typeCount("eighth"), sixteenth: typeCount("16th"), thirtySecond: typeCount("32nd"), quarter: typeCount("quarter"), half: typeCount("half"), whole: typeCount("whole"),
+    rests: count(/<rest(?:\s|>)/gi), grace: count(/<grace(?:\s|>)/gi), slurs: count(/<slur\b[^>]*type=["']start["']/gi),
+    ties: count(/<tie\b/gi), accidentals: count(/<accidental\b/gi) + count(/<alter>/gi),
+  };
+}
+
+function ScoreFeatureSummary({ musicXml }: { musicXml: string }) {
+  const stats = scoreFeatureSummary(musicXml);
+  const features = [
+    ["八分", stats.eighth], ["十六分", stats.sixteenth], ["三十二分", stats.thirtySecond], ["四分", stats.quarter], ["二分", stats.half], ["全音符", stats.whole],
+    ["休止", stats.rests], ["倚音", stats.grace], ["连音/延音", stats.slurs + stats.ties], ["升降号", stats.accidentals],
+  ].filter(([, value]) => value > 0);
+  return <div className="score-feature-summary" aria-label="Audiveris 识别统计"><b>Audiveris 识别</b>{features.map(([label, value]) => <span key={String(label)}>{label} <strong>{value}</strong></span>)}</div>;
 }
 
 function Logo({ onClick }: { onClick: () => void }) { return <button className="logo" onClick={onClick}><span className="logo-mark">B</span><span>BandProject</span></button>; }
@@ -97,7 +121,7 @@ function SheetDetail({ sheet, back }: { sheet: Sheet; back: () => void }) {
   const [liked, setLiked] = useState(false), [saved, setSaved] = useState(false), [comment, setComment] = useState(""), [expanded, setExpanded] = useState(false), [following, setFollowing] = useState(false), [zoom, setZoom] = useState(85), [shared, setShared] = useState(false), [comments, setComments] = useState(["The voicings in the second chorus are gorgeous. Super readable, too!", "Played this at our school showcase last week—thank you for arranging it."]);
   async function share(){ await navigator.clipboard?.writeText(`${sheet.title} — ${sheet.artist} on BandProject`); setShared(true); setTimeout(() => setShared(false), 1800); }
   return <main className="detail-page"><button className="back" onClick={back}><Icon name="back"/> Back to explore</button><div className="detail-grid">
-    <section className="sheet-viewer"><div className="viewer-bar"><span>{sheet.processingProvider?.includes("Audiveris") ? "Source-layout OMR score" : "MusicXML score"}</span><div><button aria-label="Zoom out" onClick={() => setZoom(Math.max(55, zoom - 10))}>−</button><span>{zoom}%</span><button aria-label="Zoom in" onClick={() => setZoom(Math.min(115, zoom + 10))}>＋</button></div><button className="download" onClick={() => downloadSheet(sheet)}><Icon name="download" size={16}/> Download MusicXML</button></div><div className="real-score" style={{ width: `${10000 / zoom}%`, transform: `scale(${zoom / 100})`, transformOrigin: "top left" }}><NotationRenderer preserveSourceLayout={sheet.processingProvider?.includes("Audiveris")} title={sheet.title} musicXml={sheet.musicXml || demoMusicXml(sheet.title, sheet.instrument, sheet.bpm || 96, sheet.id)}/></div>{sheet.processingMode === "fallback" && <div className="provider-warning"><b>Fallback preview</b>{sheet.processingWarnings?.[0]}</div>}</section>
+    <section className="sheet-viewer"><div className="viewer-bar"><span>{sheet.processingProvider?.includes("Audiveris") ? "Source-layout OMR score" : "MusicXML score"}</span><div><button aria-label="Zoom out" onClick={() => setZoom(Math.max(55, zoom - 10))}>−</button><span>{zoom}%</span><button aria-label="Zoom in" onClick={() => setZoom(Math.min(115, zoom + 10))}>＋</button></div><button className="download" onClick={() => downloadSheet(sheet)}><Icon name="download" size={16}/> Download MusicXML</button></div><div className="score-scrollport" aria-label="可滚动谱面查看器"><div className="real-score" style={{ "--score-zoom": zoom / 100 } as React.CSSProperties}><NotationRenderer preserveSourceLayout={sheet.processingProvider?.includes("Audiveris")} title={sheet.title} musicXml={sheet.musicXml || demoMusicXml(sheet.title, sheet.instrument, sheet.bpm || 96, sheet.id)}/></div></div>{sheet.musicXml && <ScoreFeatureSummary musicXml={sheet.musicXml}/>} {sheet.processingMode === "fallback" && <div className="provider-warning"><b>Fallback preview</b>{sheet.processingWarnings?.[0]}</div>}</section>
     <aside className="sheet-info"><div className="eyebrow">{sheet.genre} · {sheet.instrument}</div><h1>{sheet.title}</h1><p className="artist">{sheet.artist}</p><div className="actions"><button className={liked ? "active" : ""} onClick={() => setLiked(!liked)}><Icon name="heart"/> {liked ? sheet.likes + 1 : sheet.likes}</button><button className={saved ? "active" : ""} onClick={() => setSaved(!saved)}><Icon name="bookmark"/> {saved ? "Saved" : "Save"}</button><button aria-label="Copy share text" onClick={share}>{shared ? <Icon name="check"/> : <Icon name="more"/>}</button></div>
       <dl className="specs"><div><dt>Instrument</dt><dd>{sheet.instrument}</dd></div><div><dt>Difficulty</dt><dd>{sheet.difficulty}</dd></div><div><dt>Key</dt><dd>{sheet.key}</dd></div><div><dt>Tempo</dt><dd>{sheet.bpm} BPM</dd></div></dl>
       <div className="description"><h3>About this arrangement</h3><p>A warm, playable arrangement with detailed chord symbols and thoughtful voicings. Built for solo performance, rehearsals, and anyone looking to dig into the harmony.{expanded && " The score includes rehearsal marks, suggested dynamics, chord extensions, and a simplified ending suitable for ensemble performances."}</p><button onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : "Show full description"}</button></div>
@@ -126,7 +150,7 @@ function MeasuredWaveform({ values, active = false }: { values?: number[]; activ
 function TranscriptionView({result,serverScore,target,saved,setSaved,back}:{result:AudioAnalysisResult;serverScore:MusicProcessingResult|null;target:string;saved:boolean;setSaved:(value:boolean)=>void;back:()=>void}) {
   const musicXml=serverScore?.musicXml||demoMusicXml(result.title,target,result.bpm,result.chords.join("").length);
   const mode=serverScore?.mode||"fallback";
-  const provider=serverScore?.provider||"Browser fallback";
+  const provider=serverScore?.provider||"Audiveris unavailable";
   return <main className="transcription-page"><button className="back" onClick={back}><Icon name="back"/> Back to analysis</button><div className="transcription-head"><div><span className="kicker">{mode==="real" ? "BASIC PITCH → MIDI → MUSICXML" : "FALLBACK MODE"}</span><h1>{target} transcription</h1><p>“{result.title}” · {result.key} {result.mode} · {result.bpm} BPM</p></div><div><button className="secondary" onClick={back}><Icon name="edit"/> Adjust analysis</button><button className="primary" onClick={()=>downloadSheet({...sheets[0],title:result.title,instrument:target,bpm:result.bpm,musicXml})}><Icon name="download"/> Export MusicXML</button></div></div><div className="transcription-layout"><div className="generated-sheet"><div className="sheet-doc-head"><div><h2>{result.title.toUpperCase()}</h2><p>{target} · {provider}</p></div><span>♩ = {result.bpm}</span></div><div className="detected-chords">{result.chords.map((chord,i)=><span key={`${chord}-${i}`}>{chord}<small>{i+1}</small></span>)}</div><NotationRenderer title={result.title} musicXml={musicXml}/><div className={`provider-status ${mode}`}><b>{mode==="real" ? "Real server transcription" : "Fallback preview—not a transcription"}</b><span>{serverScore?.warnings?.[0] || "Review the generated notation before performance."}</span></div></div><aside><span className="kicker">PROCESSING SOURCE</span><h3>{provider}</h3><ul><li><Icon name="check" size={15}/>{result.bpm} BPM browser signal analysis</li><li><Icon name="check" size={15}/>{result.key} {result.mode} tonal estimate</li><li><Icon name={mode==="real" ? "check" : "close"} size={15}/>{mode==="real" ? "Basic Pitch notes converted through MIDI" : "Basic Pitch service not configured"}</li></ul><label>Transpose<select><option>Original · {result.key} {result.mode}</option><option>Up one semitone</option><option>Down one semitone</option></select></label><label>Skill level<select><option>Intermediate</option><option>Beginner</option><option>Advanced</option></select></label><button className="save-project" onClick={()=>setSaved(true)}><Icon name={saved ? "check" : "bookmark"}/>{saved ? "Saved to projects" : "Save to projects"}</button></aside></div></main>;
 }
 
@@ -145,7 +169,7 @@ function Profile({ openSheet, uploads }: { openSheet: (s: Sheet) => void; upload
 
 export default function Home() {
   const [view, setView] = useState<View>("explore"); const [selected, setSelected] = useState(sheets[0]); const [uploads,setUploads]=useState<Sheet[]>([]);
-  useEffect(()=>{queueMicrotask(async()=>{if(!isStaticSite)try{const response=await fetch("/api/sheets");const payload=await response.json() as {sheets?:Sheet[]};if(payload.sheets?.length){setUploads(payload.sheets.map(sheet=>({...sheet,likes:0,saves:0,downloads:0})));return}}catch{/* D1 is optional in local development */}try{const stored=localStorage.getItem("bandproject-uploads");if(stored)setUploads(JSON.parse(stored))}catch{/* ignore corrupt fallback data */}})},[]);
+  useEffect(()=>{queueMicrotask(async()=>{if(!isStaticSite)try{const response=await fetch("/api/sheets",{cache:"no-store"});const payload=await response.json() as {sheets?:Sheet[]};if(payload.sheets?.length){setUploads(payload.sheets.filter(isTrustedScore).map(sheet=>({...sheet,likes:0,saves:0,downloads:0})));return}}catch{/* D1 is optional in local development */}try{const stored=localStorage.getItem("bandproject-uploads");if(stored){const trusted=(JSON.parse(stored) as Sheet[]).filter(isTrustedScore);setUploads(trusted);localStorage.setItem("bandproject-uploads",JSON.stringify(trusted))}}catch{/* ignore corrupt fallback data */}})},[]);
   async function publish(sheet:Sheet){setUploads(current=>[sheet,...current]);if(!isStaticSite)try{const response=await fetch("/api/sheets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(sheet)});const payload=await response.json() as {persisted?:boolean};if(payload.persisted){localStorage.removeItem("bandproject-uploads");return}}catch{/* retain browser fallback below */}const current=JSON.parse(localStorage.getItem("bandproject-uploads")||"[]") as Sheet[];localStorage.setItem("bandproject-uploads",JSON.stringify([sheet,...current.filter(item=>item.id!==sheet.id)]))}
   function go(v: View){ setView(v); window.scrollTo({top:0,behavior:"smooth"}); }
   function openSheet(s: Sheet){ setSelected(s); go("sheet"); }

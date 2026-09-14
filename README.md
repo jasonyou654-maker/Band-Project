@@ -8,8 +8,7 @@ model/runtime dependencies stay on the server.
 
 ```text
 MusicXML ────────────────────────────────→ OpenSheetMusicDisplay
-PDF/image → Browser OMR ────────────────→ MusicXML → OpenSheetMusicDisplay
-          ↘ OMRProvider → Audiveris (when configured)
+PDF/image → OMRProvider → Audiveris ────→ MusicXML → OpenSheetMusicDisplay
 Audio → TranscriptionProvider → Basic Pitch → MIDI → music21 → MusicXML → OSMD
 ```
 
@@ -19,11 +18,10 @@ The Next.js routes are stable integration points:
 - `POST /api/transcribe`
 - `GET/POST /api/sheets`
 
-PDF, PNG, and JPG files can be recognized directly in the browser, including
-on the static GitHub Pages build. When `MUSIC_PROCESSOR_URL` is configured the
-app tries the Audiveris processor first and automatically falls back to the
-browser engine if the service is unavailable. It never publishes a sample
-score as if it came from a scan.
+PDF, PNG, and JPG files require the Audiveris processing service. The app no
+longer falls back to the simplified browser OMR: if Audiveris is unavailable,
+the upload fails with an actionable error instead of publishing an incomplete
+score as if it came from the scan.
 
 ## Data
 
@@ -60,7 +58,8 @@ pnpm test
 ```
 
 On Apple Silicon macOS, `dev:omr` starts both the bundled Audiveris bridge and
-the web app. PDF, PNG, and JPG uploads are recognized automatically; MusicXML
+the web app. PDF, PNG, and JPG uploads are recognized automatically by
+Audiveris; MusicXML
 uploads are read directly. The bundled `tools/Audiveris.app` is intentionally
 gitignored, so a fresh checkout must install Audiveris separately or connect
 the FastAPI processor with `MUSIC_PROCESSOR_URL`.

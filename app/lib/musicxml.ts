@@ -62,6 +62,14 @@ export function hasEncodedSourceLayout(value: string) {
     || /<note\b[^>]*\bdefault-[xy]\s*=\s*["'][^"']+["']/i.test(value);
 }
 
+/** A piano/grand-staff part has multiple staves within the same MusicXML part.
+ * Keeping this signal separate from the number of systems prevents a renderer
+ * from mistaking successive lines on a page for separate instruments. */
+export function hasGrandStaff(value: string) {
+  return /<staves>\s*(?:[2-9]|[1-9]\d+)\s*<\/staves>/i.test(value)
+    || /<staff>\s*2\s*<\/staff>/i.test(value);
+}
+
 function rest(duration: number) { return `<note><rest/><duration>${duration}</duration><voice>1</voice><type>${durationType(duration, 4)}</type></note>`; }
 function durationType(duration: number, divisions: number) { if (duration >= divisions * 4) return "whole"; if (duration >= divisions * 2) return "half"; if (duration >= divisions) return "quarter"; if (duration >= divisions / 2) return "eighth"; return "16th"; }
 function escapeXml(value: string) { return value.replace(/[<>&'\"]/g, character => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[character] || character); }

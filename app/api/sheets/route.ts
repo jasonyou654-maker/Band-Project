@@ -53,7 +53,7 @@ export async function GET() {
       import("@/db"), import("@/db/schema"), import("drizzle-orm"),
     ]);
     const rows = await getDb().select().from(sheets).orderBy(desc(sheets.createdAt));
-    return Response.json({ sheets: rows.map(toClientSheet), storage: "d1" });
+    return Response.json({ sheets: rows.map(toClientSheet), storage: "d1" }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return unavailable();
   }

@@ -23,18 +23,50 @@ export function isDirectMusicXml(file: File): boolean {
   return DIRECT_XML_EXTENSIONS.has(extension(file));
 }
 
+function publicProcessorUrl(): string | undefined {
+  return process.env.NEXT_PUBLIC_MUSIC_PROCESSOR_URL?.replace(/\/$/, "") || undefined;
+}
+
 function processingEndpoint(): string {
-  const publicProcessor = process.env.NEXT_PUBLIC_MUSIC_PROCESSOR_URL?.replace(/\/$/, "");
+  const publicProcessor = publicProcessorUrl();
   if (publicProcessor) return `${publicProcessor}/omr`;
   return "/api/omr";
 }
 
+async function recognizeWithQueuedProcessor(file: File, processor: string): Promise<MusicProcessingResult> {
+  const body = new FormData();
+  body.append("file", file);
+  const queued = await fetch(`${processor}/omr/jobs`, {
+    method: "POST",
+    body,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const queuedPayload = await queued.json().catch(() => ({})) as { jobId?: string; status?: string; error?: string };
+  if (!queued.ok || !queuedPayload.jobId) {
+    throw new Error(queuedPayload.error || "OMR 服务无法创建识谱任务。");
+  }
+
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise(resolve => window.setTimeout(resolve, 1500));
+    const result = await fetch(`${processor}/omr/jobs/${encodeURIComponent(queuedPayload.jobId)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000),
+    });
+    const payload = await result.json().catch(() => ({})) as Partial<MusicProcessingResult> & { status?: string; error?: string };
+    if (payload.status === "completed" && payload.musicXml) return payload as MusicProcessingResult;
+    if (payload.status === "failed" || !result.ok) throw new Error(payload.error || "Audiveris 无法识别这份乐谱。");
+  }
+  throw new Error("这份乐谱识别时间较长，任务仍在服务器处理中，请稍后重试。系统不会用简化谱覆盖完整识谱结果。");
+}
+
 export async function recognizeScore(file: File): Promise<MusicProcessingResult> {
   validateScoreFile(file);
-  const browserFallback = async () => (await import("./browser-omr")).recognizeScoreInBrowser(file);
-  if (process.env.NEXT_PUBLIC_STATIC_SITE === "true" && !process.env.NEXT_PUBLIC_MUSIC_PROCESSOR_URL) {
-    return browserFallback();
+  const publicProcessor = publicProcessorUrl();
+  if (process.env.NEXT_PUBLIC_STATIC_SITE === "true" && !publicProcessor) {
+    throw new Error("未配置 Audiveris 服务。请为网站设置 NEXT_PUBLIC_MUSIC_PROCESSOR_URL 后再上传乐谱。");
   }
+  if (publicProcessor) return recognizeWithQueuedProcessor(file, publicProcessor);
   const body = new FormData();
   body.append("file", file);
 
@@ -49,17 +81,14 @@ export async function recognizeScore(file: File): Promise<MusicProcessingResult>
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === "TimeoutError") {
-      return browserFallback();
+      throw new Error("Audiveris 识谱超时。请检查处理服务状态，或使用分辨率更高、页数更少的乐谱。");
     }
-    return browserFallback();
+    throw new Error("无法连接 Audiveris 识谱服务。请确认 MUSIC_PROCESSOR_URL 已配置且服务正在运行。");
   }
 
   const payload = await response.json().catch(() => ({})) as Partial<MusicProcessingResult> & { error?: string; detail?: string };
   if (!response.ok || !payload.musicXml) {
-    return browserFallback();
-  }
-  if (payload.mode !== "real") {
-    return browserFallback();
+    throw new Error(payload.error || payload.detail || "Audiveris 未能从这份乐谱生成 MusicXML。");
   }
   return payload as MusicProcessingResult;
 }

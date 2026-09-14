@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { hasEncodedSourceLayout } from "../lib/musicxml";
+import { hasEncodedSourceLayout, hasGrandStaff } from "../lib/musicxml";
 
 type NotationRendererProps = {
   musicXml: string;
@@ -14,6 +14,7 @@ export function NotationRenderer({ musicXml, title, preserveSourceLayout = false
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const sourceLayout = preserveSourceLayout || hasEncodedSourceLayout(musicXml);
+  const grandStaff = hasGrandStaff(musicXml);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,7 +27,9 @@ export function NotationRenderer({ musicXml, title, preserveSourceLayout = false
         setError("");
         const score = new OpenSheetMusicDisplay(hostRef.current, {
           autoResize: true, backend: "svg", drawTitle: false, drawComposer: false,
-          drawingParameters: sourceLayout && !thumbnail ? "default" : "compacttight",
+          // Compact engraving is for card thumbnails only. Full scores must
+          // retain stems, beams, rests, accidentals and multi-staff spacing.
+          drawingParameters: thumbnail ? "compacttight" : "default",
           pageFormat: sourceLayout && !thumbnail ? "A4_P" : "Endless",
           newSystemFromXML: sourceLayout && !thumbnail,
           newPageFromXML: sourceLayout && !thumbnail,
@@ -43,5 +46,5 @@ export function NotationRenderer({ musicXml, title, preserveSourceLayout = false
     return () => { cancelled = true; };
   }, [musicXml, sourceLayout, thumbnail]);
 
-  return <div ref={hostRef} className={`osmd-host ${sourceLayout && !thumbnail ? "source-layout" : ""} ${thumbnail ? "thumbnail-score" : ""}`} aria-label={`${title} 的五线谱`}>{error && <p className="notation-error">{error}</p>}</div>;
+  return <div ref={hostRef} className={`osmd-host ${sourceLayout && !thumbnail ? "source-layout" : ""} ${grandStaff && !thumbnail ? "grand-staff" : ""} ${thumbnail ? "thumbnail-score" : ""}`} aria-label={`${title} 的五线谱`}>{error && <p className="notation-error">{error}</p>}</div>;
 }

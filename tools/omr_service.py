@@ -9,6 +9,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import zipfile
+import xml.etree.ElementTree as ET
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,6 +33,17 @@ def prepare_runtime() -> None:
 
 def command(source: Path, output: Path) -> list[str]:
     return [str(JAVA), "-Xms128m", "-Xmx2G", "--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED", "--enable-native-access=ALL-UNNAMED", "-Dfile.encoding=UTF-8", "-cp", str(APP / "app" / "*"), "Audiveris", "-batch", "-transcribe", "-export", "-output", str(output), "--", str(source)]
+
+
+def read_musicxml_output(path: Path) -> str:
+    if path.suffix.lower() != ".mxl":
+        return path.read_text(encoding="utf-8")
+    with zipfile.ZipFile(path) as archive:
+        container = ET.fromstring(archive.read("META-INF/container.xml"))
+        rootfile = container.find(".//{*}rootfile")
+        if rootfile is None or not rootfile.attrib.get("full-path"):
+            raise ValueError("Audiveris returned an MXL archive without a MusicXML root file.")
+        return archive.read(rootfile.attrib["full-path"]).decode("utf-8")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -99,10 +112,10 @@ class Handler(BaseHTTPRequestHandler):
                 output = directory / "output"
                 output.mkdir()
                 result = subprocess.run(command(source, output), cwd=ROOT, capture_output=True, text=True, timeout=240)
-                musicxml = next(iter(output.rglob("*.musicxml")), None)
+                musicxml = next(iter(output.rglob("*.musicxml")), None) or next(iter(output.rglob("*.mxl")), None)
                 if result.returncode == 0 and musicxml:
                     self.send_json(200, {
-                        "musicXml": musicxml.read_text(encoding="utf-8"),
+                        "musicXml": read_musicxml_output(musicxml),
                         "provider": "Audiveris (source layout)",
                         "mode": "real",
                         "warnings": [],
