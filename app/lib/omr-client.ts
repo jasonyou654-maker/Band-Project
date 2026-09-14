@@ -36,11 +36,17 @@ function processingEndpoint(): string {
 async function recognizeWithQueuedProcessor(file: File, processor: string): Promise<MusicProcessingResult> {
   const body = new FormData();
   body.append("file", file);
-  const queued = await fetch(`${processor}/omr/jobs`, {
-    method: "POST",
-    body,
-    signal: AbortSignal.timeout(30_000),
-  });
+  let queued: Response;
+  try {
+    queued = await fetch(`${processor}/omr/jobs`, {
+      method: "POST",
+      body,
+      cache: "no-store",
+      signal: AbortSignal.timeout(60_000),
+    });
+  } catch {
+    throw new Error("无法连接 Audiveris 服务。识谱服务可能正在唤醒，请稍后刷新页面重试。");
+  }
   const queuedPayload = await queued.json().catch(() => ({})) as { jobId?: string; status?: string; error?: string };
   if (!queued.ok || !queuedPayload.jobId) {
     throw new Error(queuedPayload.error || "OMR 服务无法创建识谱任务。");
@@ -49,10 +55,15 @@ async function recognizeWithQueuedProcessor(file: File, processor: string): Prom
   const deadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < deadline) {
     await new Promise(resolve => window.setTimeout(resolve, 1500));
-    const result = await fetch(`${processor}/omr/jobs/${encodeURIComponent(queuedPayload.jobId)}`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(30_000),
-    });
+    let result: Response;
+    try {
+      result = await fetch(`${processor}/omr/jobs/${encodeURIComponent(queuedPayload.jobId)}`, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch {
+      throw new Error("与 Audiveris 服务的连接中断。识谱任务可能仍在服务器运行，请稍后刷新查看。");
+    }
     const payload = await result.json().catch(() => ({})) as Partial<MusicProcessingResult> & { status?: string; error?: string };
     if (payload.status === "completed" && payload.musicXml) return payload as MusicProcessingResult;
     if (payload.status === "failed" || !result.ok) throw new Error(payload.error || "Audiveris 无法识别这份乐谱。");
