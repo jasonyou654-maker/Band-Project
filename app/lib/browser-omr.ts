@@ -75,7 +75,12 @@ async function renderPdf(file: File): Promise<HTMLCanvasElement[]> {
     await page.render({ canvas, canvasContext: context, viewport }).promise;
     canvases.push(canvas);
   }
-  await pdf.destroy();
+  // PDF.js builds used by static exports do not all expose `destroy()` on the
+  // document proxy. Cleaning up is optional here: the canvases are already
+  // detached from PDF.js, and letting the document be garbage-collected is
+  // safer than turning a successful recognition into a runtime error.
+  const documentProxy = pdf as unknown as { cleanup?: () => Promise<unknown>; destroy?: () => Promise<unknown> };
+  if (typeof documentProxy.cleanup === "function") await documentProxy.cleanup();
   return canvases;
 }
 
