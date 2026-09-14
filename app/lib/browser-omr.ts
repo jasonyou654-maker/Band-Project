@@ -35,8 +35,8 @@ export async function recognizeScoreInBrowser(file: File): Promise<MusicProcessi
     provider: "BandProject Browser OMR",
     mode: "real",
     warnings: [
-      `浏览器 OMR 从 ${pages.length} 页、${staffCount} 组五线谱中识别了 ${groups.reduce((sum, group) => sum + group.pitches.length, 0)} 个音符。`,
-      "浏览器识谱会保留音高和基础和弦，复杂节奏、连音、歌词与装饰音建议发布后人工核对。",
+      `浏览器 OMR 从 ${pages.length} 页、${staffCount} 组五线谱中识别了 ${groups.reduce((sum, group) => sum + group.pitches.length, 0)} 个音符，并输出 ${new Set(groups.map(group => group.staff)).size} 个声部。`,
+      "浏览器识谱会保留音高、基础和弦和双谱表分离；复杂节奏、连音、歌词与装饰音建议使用 Audiveris 服务并人工核对。",
     ],
   };
 }
@@ -228,22 +228,29 @@ function diatonicToMidi(diatonic: number): number {
 }
 
 function groupsToMusicXml(title: string, groups: NoteGroup[]): string {
-  const measures: string[] = [];
-  for (let offset = 0; offset < groups.length; offset += 4) {
-    const measureGroups = groups.slice(offset, offset + 4);
-    const notes = measureGroups.map(group => group.pitches.map((midi, noteIndex) => {
-      const pitchClass = ((midi % 12) + 12) % 12;
-      const naturalSteps = [0, 2, 4, 5, 7, 9, 11];
-      const stepIndex = naturalSteps.findIndex(value => value === pitchClass);
-      const resolvedStep = stepIndex >= 0 ? stepIndex : Math.max(0, naturalSteps.findIndex(value => value > pitchClass) - 1);
-      const alter = naturalSteps[resolvedStep] === pitchClass ? "" : "<alter>1</alter>";
-      return `<note>${noteIndex ? "<chord/>" : ""}<pitch><step>${STEP_NAMES[resolvedStep]}</step>${alter}<octave>${Math.floor(midi / 12) - 1}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`;
-    }).join("")).join("");
-    const rests = Array.from({ length: 4 - measureGroups.length }, () => "<note><rest/><duration>1</duration><voice>1</voice><type>quarter</type></note>").join("");
-    const attributes = offset === 0 ? "<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>" : "";
-    measures.push(`<measure number="${measures.length + 1}">${attributes}${notes}${rests}</measure>`);
-  }
-  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>BandProject Browser OMR</software></encoding></identification><part-list><score-part id="P1"><part-name>Recognized score</part-name></score-part></part-list><part id="P1">${measures.join("")}</part></score-partwise>`;
+  const staffIds = [...new Set(groups.map(group => group.staff))].sort((a, b) => a - b);
+  const parts = staffIds.map((staffId, partIndex) => {
+    const staffGroups = groups.filter(group => group.staff === staffId);
+    const measures: string[] = [];
+    for (let offset = 0; offset < staffGroups.length; offset += 4) {
+      const measureGroups = staffGroups.slice(offset, offset + 4);
+      const notes = measureGroups.map(group => group.pitches.map((midi, noteIndex) => {
+        const pitchClass = ((midi % 12) + 12) % 12;
+        const naturalSteps = [0, 2, 4, 5, 7, 9, 11];
+        const stepIndex = naturalSteps.findIndex(value => value === pitchClass);
+        const resolvedStep = stepIndex >= 0 ? stepIndex : Math.max(0, naturalSteps.findIndex(value => value > pitchClass) - 1);
+        const alter = naturalSteps[resolvedStep] === pitchClass ? "" : "<alter>1</alter>";
+        return `<note>${noteIndex ? "<chord/>" : ""}<pitch><step>${STEP_NAMES[resolvedStep]}</step>${alter}<octave>${Math.floor(midi / 12) - 1}</octave></pitch><duration>1</duration><voice>1</voice><type>quarter</type></note>`;
+      }).join("")).join("");
+      const rests = Array.from({ length: 4 - measureGroups.length }, () => "<note><rest/><duration>1</duration><voice>1</voice><type>quarter</type></note>").join("");
+      const clef = partIndex === 0 ? "<sign>G</sign><line>2</line>" : "<sign>F</sign><line>4</line>";
+      const attributes = offset === 0 ? `<attributes><divisions>1</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef>${clef}</clef></attributes>` : "";
+      measures.push(`<measure number="${measures.length + 1}">${attributes}${notes}${rests}</measure>`);
+    }
+    return `<part id="P${partIndex + 1}">${measures.join("")}</part>`;
+  }).join("");
+  const partList = staffIds.map((_, index) => `<score-part id="P${index + 1}"><part-name>${index === 0 ? "Treble staff" : "Bass staff"}</part-name></score-part>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>BandProject Browser OMR</software></encoding></identification><part-list>${partList}</part-list>${parts}</score-partwise>`;
 }
 
 function escapeXml(value: string): string {
