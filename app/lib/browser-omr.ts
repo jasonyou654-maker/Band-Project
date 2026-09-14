@@ -42,13 +42,35 @@ export async function recognizeScoreInBrowser(file: File): Promise<MusicProcessi
 }
 
 async function renderImage(file: File): Promise<HTMLCanvasElement> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 2200 / bitmap.width);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-  canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 2200 / bitmap.width);
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    return canvas;
+  }
+
+  // Safari/WebKit and some embedded browsers may not expose createImageBitmap.
+  // Use the broadly supported Image decoder so PNG, JPG, and JPEG uploads
+  // still reach the same OMR pipeline.
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("无法读取图片文件，请重新选择 PNG 或 JPG 图片。"));
+      element.src = objectUrl;
+    });
+    const scale = Math.min(1, 2200 / image.naturalWidth);
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    canvas.getContext("2d")?.drawImage(image, 0, 0, canvas.width, canvas.height);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
   return canvas;
 }
 
