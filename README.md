@@ -8,7 +8,7 @@ model/runtime dependencies stay on the server.
 
 ```text
 MusicXML ────────────────────────────────→ OpenSheetMusicDisplay
-PDF/image → OMRProvider → Audiveris ────→ MusicXML → OpenSheetMusicDisplay
+PDF/image → Original source preview → scrollable score viewer
 Audio → TranscriptionProvider → Basic Pitch → MIDI → music21 → MusicXML → OSMD
 ```
 
@@ -18,10 +18,9 @@ The Next.js routes are stable integration points:
 - `POST /api/transcribe`
 - `GET/POST /api/sheets`
 
-PDF, PNG, and JPG files require the Audiveris processing service. The app no
-longer falls back to the simplified browser OMR: if Audiveris is unavailable,
-the upload fails with an actionable error instead of publishing an incomplete
-score as if it came from the scan.
+PDF, PNG, and JPG files are displayed directly from the uploaded source in a
+scrollable viewer. No OMR conversion is required for source-score uploads;
+MusicXML files continue to render as structured notation.
 
 ## Data
 

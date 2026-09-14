@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "A valid JSON sheet payload is required." }, { status: 400 });
   }
 
-  const required = ["title", "artist", "instrument", "genre", "difficulty", "key", "uploader", "avatar", "accent", "musicXml"] as const;
+  const required = ["title", "artist", "instrument", "genre", "difficulty", "key", "uploader", "avatar", "accent"] as const;
   if (required.some(field => typeof payload[field] !== "string" || !payload[field]?.trim())) {
     return Response.json({ error: "Sheet title, metadata, and MusicXML are required." }, { status: 400 });
   }
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
       uploader: payload.uploader!.trim(),
       avatar: payload.avatar!.trim(),
       accent: payload.accent!.trim(),
-      musicXml: payload.musicXml!,
+      musicXml: payload.musicXml || "",
       processingMode: payload.processingMode || "real",
       processingProvider: payload.processingProvider || "Unknown",
       processingWarnings: JSON.stringify(payload.processingWarnings || []),
