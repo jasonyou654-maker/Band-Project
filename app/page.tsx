@@ -75,6 +75,43 @@ function ScorePreview({ sheet }: { sheet: Sheet }) {
   </div>;
 }
 
+function SourceCoverPreview({ sheet }: { sheet: Sheet }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [fallback, setFallback] = useState(false);
+  const isPdf = sheet.sourceMimeType === "application/pdf" || sheet.sourceFileName?.toLowerCase().endsWith(".pdf");
+  useEffect(() => {
+    if (!isPdf || !sheet.sourcePreviewUrl || !hostRef.current) return;
+    let cancelled = false;
+    async function renderFirstPage() {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        const worker = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+        pdfjs.GlobalWorkerOptions.workerSrc = location.pathname.startsWith("/Band-Project/")
+          ? worker.replace(`${location.origin}/assets/`, `${location.origin}/Band-Project/assets/`)
+          : worker;
+        const response = await fetch(sheet.sourcePreviewUrl!);
+        if (!response.ok) throw new Error("无法读取 PDF 原文件。");
+        const pdf = await pdfjs.getDocument({ data: new Uint8Array(await response.arrayBuffer()) }).promise;
+        const page = await pdf.getPage(1);
+        const viewport = page.getViewport({ scale: 1.8 });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        canvas.className = "source-cover-pdf-page";
+        await page.render({ canvas, canvasContext: canvas.getContext("2d", { alpha: false })!, viewport }).promise;
+        if (cancelled || !hostRef.current) return;
+        hostRef.current.replaceChildren(canvas);
+      } catch {
+        if (!cancelled) setFallback(true);
+      }
+    }
+    void renderFirstPage();
+    return () => { cancelled = true; };
+  }, [isPdf, sheet.sourcePreviewUrl]);
+  if (!sheet.sourcePreviewUrl) return <ScorePreview sheet={sheet}/>;
+  if (!isPdf) return <div className="source-cover image-source-cover"><img src={sheet.sourcePreviewUrl} alt={`${sheet.title} 原始乐谱第一页`} /></div>;
+  return <div className="source-cover pdf-source-cover">{fallback ? <iframe src={sheet.sourcePreviewUrl} title={`${sheet.title} 原始乐谱第一页`} /> : <div ref={hostRef} />}</div>;
+}
+
 function scoreFeatureSummary(musicXml: string) {
   const count = (pattern: RegExp) => musicXml.match(pattern)?.length || 0;
   const typeCount = (type: string) => count(new RegExp(`<type>${type}</type>`, "gi"));
@@ -164,7 +201,7 @@ function Nav({ view, go }: { view: View; go: (v: View) => void }) {
 
 function SheetCard({ sheet, open }: { sheet: Sheet; open: () => void }) {
   const [liked, setLiked] = useState(false); const [saved, setSaved] = useState(false);
-  return <article className="sheet-card"><button className="cover" onClick={open} style={{ "--card-accent": sheet.accent } as React.CSSProperties}><ScorePreview sheet={sheet}/><span className="instrument-tag">{sheet.instrument}</span></button>
+  return <article className="sheet-card"><button className="cover" onClick={open} style={{ "--card-accent": sheet.accent } as React.CSSProperties}><SourceCoverPreview sheet={sheet}/><span className="instrument-tag">{sheet.instrument}</span></button>
     <div className="card-copy"><div><button className="title-link" onClick={open}>{sheet.title}</button><p>{sheet.artist}</p></div><div className="card-buttons"><button className={liked ? "selected" : ""} onClick={() => setLiked(!liked)}><Icon name="heart" size={17}/></button><button className={saved ? "selected" : ""} onClick={() => setSaved(!saved)}><Icon name="bookmark" size={17}/></button></div></div>
     <div className="card-meta"><span>{sheet.difficulty}</span><span>•</span><span>{sheet.genre}</span><span className="plays">{sheet.downloads.toLocaleString()} plays</span></div>
     <div className="uploader"><span className="tiny-avatar" style={{ background: sheet.accent }}>{sheet.avatar}</span><span>by {sheet.uploader}</span></div></article>;
