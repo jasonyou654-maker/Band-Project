@@ -114,7 +114,12 @@ function PdfSourcePreview({ url, title, zoom }: { url: string; title: string; zo
         pdfjs.GlobalWorkerOptions.workerSrc = location.pathname.startsWith("/Band-Project/")
           ? worker.replace(`${location.origin}/assets/`, `${location.origin}/Band-Project/assets/`)
           : worker;
-        const pdf = await pdfjs.getDocument(url).promise;
+        // PDF.js cannot reliably fetch a data: URL in static deployments.
+        // Reading it into bytes first also works for same-session blob URLs.
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("无法读取 PDF 原文件。");
+        const data = new Uint8Array(await response.arrayBuffer());
+        const pdf = await pdfjs.getDocument({ data }).promise;
         if (cancelled || !hostRef.current) return;
         hostRef.current.replaceChildren();
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -137,7 +142,7 @@ function PdfSourcePreview({ url, title, zoom }: { url: string; title: string; zo
     void renderPdf();
     return () => { cancelled = true; };
   }, [url, title, zoom]);
-  return <div ref={hostRef} className="source-file-preview pdf-pages" aria-label={`${title} 原始 PDF`}>{error && <div className="source-unavailable">{error}</div>}</div>;
+  return <div ref={hostRef} className="source-file-preview pdf-pages" aria-label={`${title} 原始 PDF`}>{error && <iframe className="native-pdf-fallback" src={url} title={`${title} 原始 PDF`} />}</div>;
 }
 
 function Logo({ onClick }: { onClick: () => void }) { return <button className="logo" onClick={onClick}><span className="logo-mark">B</span><span>BandProject</span></button>; }
