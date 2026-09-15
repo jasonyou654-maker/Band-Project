@@ -77,9 +77,47 @@ function ScoreFeatureSummary({ musicXml }: { musicXml: string }) {
 function SourcePreview({ sheet, zoom }: { sheet: Sheet; zoom: number }) {
   if (!sheet.sourcePreviewUrl) return null;
   if (sheet.sourceMimeType === "application/pdf" || sheet.sourceFileName?.toLowerCase().endsWith(".pdf")) {
-    return <iframe className="source-file-preview pdf-preview" src={sheet.sourcePreviewUrl} title={`${sheet.title} 原始 PDF`}/>;
+    return <PdfSourcePreview url={sheet.sourcePreviewUrl} title={sheet.title} zoom={zoom}/>;
   }
   return <div className="source-file-preview image-preview" style={{ "--score-zoom": zoom / 100 }}><img src={sheet.sourcePreviewUrl} alt={`${sheet.title} 原始乐谱`} /></div>;
+}
+
+function PdfSourcePreview({ url, title, zoom }: { url: string; title: string; zoom: number }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    async function renderPdf() {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        const worker = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+        pdfjs.GlobalWorkerOptions.workerSrc = location.pathname.startsWith("/Band-Project/")
+          ? worker.replace(`${location.origin}/assets/`, `${location.origin}/Band-Project/assets/`)
+          : worker;
+        const pdf = await pdfjs.getDocument(url).promise;
+        if (cancelled || !hostRef.current) return;
+        hostRef.current.replaceChildren();
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const base = page.getViewport({ scale: 1 });
+          const scale = Math.max(.8, Math.min(2.2, 1150 / base.width)) * zoom / 100;
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+          canvas.className = "pdf-page-canvas";
+          canvas.setAttribute("aria-label", `${title} 第 ${pageNumber} 页`);
+          hostRef.current.appendChild(canvas);
+          await page.render({ canvas, canvasContext: canvas.getContext("2d", { alpha: false })!, viewport }).promise;
+          if (cancelled) return;
+        }
+      } catch {
+        if (!cancelled) setError("无法显示 PDF 原文件，请点击下载原文件查看。");
+      }
+    }
+    void renderPdf();
+    return () => { cancelled = true; };
+  }, [url, title, zoom]);
+  return <div ref={hostRef} className="source-file-preview pdf-pages" aria-label={`${title} 原始 PDF`}>{error && <div className="source-unavailable">{error}</div>}</div>;
 }
 
 function Logo({ onClick }: { onClick: () => void }) { return <button className="logo" onClick={onClick}><span className="logo-mark">B</span><span>BandProject</span></button>; }
