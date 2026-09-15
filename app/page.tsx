@@ -231,17 +231,23 @@ function downloadSheet(sheet: Sheet) {
 
 function SheetDetail({ sheet, back, liked, saved, toggleLike, toggleSave }: { sheet: Sheet; back: () => void; liked: boolean; saved: boolean; toggleLike: () => void; toggleSave: () => void }) {
   const [comment, setComment] = useState(""), [expanded, setExpanded] = useState(false), [following, setFollowing] = useState(false), [zoom, setZoom] = useState(85), [shared, setShared] = useState(false), [comments, setComments] = useState(["The voicings in the second chorus are gorgeous. Super readable, too!", "Played this at our school showcase last week—thank you for arranging it."]);
+  const scorePortRef = useRef<HTMLDivElement>(null);
   async function share(){ await navigator.clipboard?.writeText(`${sheet.title} — ${sheet.artist} on BandProject`); setShared(true); setTimeout(() => setShared(false), 1800); }
-  function handleScoreWheel(event: React.WheelEvent<HTMLDivElement>) {
-    // Chrome and Safari expose trackpad pinch as a ctrl/cmd-modified wheel.
-    // Keep ordinary wheel movement available for scrolling the score.
-    if (!event.ctrlKey && !event.metaKey) return;
-    event.preventDefault();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    setZoom(value => Math.max(55, Math.min(130, value + direction * 5)));
-  }
+  useEffect(() => {
+    const port = scorePortRef.current;
+    if (!port) return;
+    // A native non-passive listener is required: React's wheel listener cannot
+    // reliably cancel Chrome's page-level pinch zoom.
+    const handlePinch = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setZoom(value => Math.max(55, Math.min(130, value + (event.deltaY < 0 ? 5 : -5))));
+    };
+    port.addEventListener("wheel", handlePinch, { passive: false });
+    return () => port.removeEventListener("wheel", handlePinch);
+  }, []);
   return <main className="detail-page"><button className="back" onClick={back}><Icon name="back"/> Back to explore</button><div className="detail-grid">
-    <section className="sheet-viewer"><div className="viewer-bar"><span>{sheet.sourcePreviewUrl ? "Original uploaded score" : sheet.processingProvider?.includes("Audiveris") ? "Source-layout OMR score" : "MusicXML score"}</span><div className="zoom-controls"><button aria-label="Zoom out" onClick={() => setZoom(Math.max(55, zoom - 10))}>−</button><span>{zoom}%</span><button aria-label="Zoom in" onClick={() => setZoom(Math.min(130, zoom + 10))}>＋</button></div>{sheet.sourcePreviewUrl ? <a className="download" href={sheet.sourcePreviewUrl} download={sheet.sourceFileName || "score"}><Icon name="download" size={16}/> Download original</a> : sheet.musicXml ? <button className="download" onClick={() => downloadSheet(sheet)}><Icon name="download" size={16}/> Download MusicXML</button> : null}</div><div className="score-scrollport" aria-label="可滚动谱面查看器" onWheel={handleScoreWheel}>{sheet.sourcePreviewUrl ? <SourcePreview sheet={sheet} zoom={zoom}/> : sheet.musicXml ? <div className="real-score" style={{ "--score-zoom": zoom / 100 } as React.CSSProperties}><NotationRenderer preserveSourceLayout={sheet.processingProvider?.includes("Audiveris")} title={sheet.title} musicXml={sheet.musicXml}/></div> : <div className="source-unavailable">原始文件仅在上传会话中预览；请重新上传该 PDF 或图片。</div>}</div>{sheet.musicXml && <ScoreFeatureSummary musicXml={sheet.musicXml}/>} {sheet.processingMode === "fallback" && <div className="provider-warning"><b>Fallback preview</b>{sheet.processingWarnings?.[0]}</div>}</section>
+    <section className="sheet-viewer"><div className="viewer-bar"><span>{sheet.sourcePreviewUrl ? "Original uploaded score" : sheet.processingProvider?.includes("Audiveris") ? "Source-layout OMR score" : "MusicXML score"}</span><div className="zoom-controls"><button aria-label="Zoom out" onClick={() => setZoom(Math.max(55, zoom - 10))}>−</button><span>{zoom}%</span><button aria-label="Zoom in" onClick={() => setZoom(Math.min(130, zoom + 10))}>＋</button></div>{sheet.sourcePreviewUrl ? <a className="download" href={sheet.sourcePreviewUrl} download={sheet.sourceFileName || "score"}><Icon name="download" size={16}/> Download original</a> : sheet.musicXml ? <button className="download" onClick={() => downloadSheet(sheet)}><Icon name="download" size={16}/> Download MusicXML</button> : null}</div><div ref={scorePortRef} className="score-scrollport" aria-label="可滚动谱面查看器">{sheet.sourcePreviewUrl ? <SourcePreview sheet={sheet} zoom={zoom}/> : sheet.musicXml ? <div className="real-score" style={{ "--score-zoom": zoom / 100 } as React.CSSProperties}><NotationRenderer preserveSourceLayout={sheet.processingProvider?.includes("Audiveris")} title={sheet.title} musicXml={sheet.musicXml}/></div> : <div className="source-unavailable">原始文件仅在上传会话中预览；请重新上传该 PDF 或图片。</div>}</div>{sheet.musicXml && <ScoreFeatureSummary musicXml={sheet.musicXml}/>} {sheet.processingMode === "fallback" && <div className="provider-warning"><b>Fallback preview</b>{sheet.processingWarnings?.[0]}</div>}</section>
     <aside className="sheet-info"><div className="eyebrow">{sheet.genre} · {sheet.instrument}</div><h1>{sheet.title}</h1><p className="artist">{sheet.artist}</p><div className="actions"><button className={liked ? "active" : ""} onClick={toggleLike}><Icon name="heart"/> {liked ? sheet.likes + 1 : sheet.likes}</button><button className={saved ? "active" : ""} onClick={toggleSave}><Icon name="bookmark"/> {saved ? "Saved" : "Save"}</button><button aria-label="Copy share text" onClick={share}>{shared ? <Icon name="check"/> : <Icon name="more"/>}</button></div>
       <dl className="specs"><div><dt>Instrument</dt><dd>{sheet.instrument}</dd></div><div><dt>Difficulty</dt><dd>{sheet.difficulty}</dd></div><div><dt>Key</dt><dd>{sheet.key}</dd></div><div><dt>Tempo</dt><dd>{sheet.bpm} BPM</dd></div></dl>
       <div className="description"><h3>About this arrangement</h3><p>A warm, playable arrangement with detailed chord symbols and thoughtful voicings. Built for solo performance, rehearsals, and anyone looking to dig into the harmony.{expanded && " The score includes rehearsal marks, suggested dynamics, chord extensions, and a simplified ending suitable for ensemble performances."}</p><button onClick={() => setExpanded(!expanded)}>{expanded ? "Show less" : "Show full description"}</button></div>
