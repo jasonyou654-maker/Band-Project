@@ -232,6 +232,7 @@ function downloadSheet(sheet: Sheet) {
 function SheetDetail({ sheet, back, liked, saved, toggleLike, toggleSave }: { sheet: Sheet; back: () => void; liked: boolean; saved: boolean; toggleLike: () => void; toggleSave: () => void }) {
   const [comment, setComment] = useState(""), [expanded, setExpanded] = useState(false), [following, setFollowing] = useState(false), [zoom, setZoom] = useState(85), [shared, setShared] = useState(false), [comments, setComments] = useState(["The voicings in the second chorus are gorgeous. Super readable, too!", "Played this at our school showcase last week—thank you for arranging it."]);
   const scorePortRef = useRef<HTMLDivElement>(null);
+  const changeZoom = (amount: number) => setZoom(value => Math.max(55, Math.min(130, value + amount)));
   async function share(){ await navigator.clipboard?.writeText(`${sheet.title} — ${sheet.artist} on BandProject`); setShared(true); setTimeout(() => setShared(false), 1800); }
   useEffect(() => {
     const port = scorePortRef.current;
@@ -241,7 +242,7 @@ function SheetDetail({ sheet, back, liked, saved, toggleLike, toggleSave }: { sh
     const handlePinch = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
-      setZoom(value => Math.max(55, Math.min(130, value + (event.deltaY < 0 ? 5 : -5))));
+      changeZoom(event.deltaY < 0 ? 2 : -2);
     };
     port.addEventListener("wheel", handlePinch, { passive: false });
     return () => port.removeEventListener("wheel", handlePinch);
