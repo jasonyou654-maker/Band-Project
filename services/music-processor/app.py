@@ -18,9 +18,16 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from transcription.audio import FfmpegAudioPreprocessor
+from transcription.basic_pitch_adapter import BasicPitchTranscriber
+from transcription.contracts import AudioAsset, TranscriptionRequest
+from transcription.demucs_adapter import DemucsSourceSeparator
+from transcription.beat_tracking import LibrosaBeatTracker
+from transcription.pipeline import TranscriptionPipeline
+from transcription.score import GridRhythmQuantizer, Music21ScoreExporter
 
 app = FastAPI(title="BandProject Music Processor", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WEB_ORIGINS", "http://localhost:3000,http://localhost:3001").split(","), allow_methods=["POST", "GET"], allow_headers=["*"])
@@ -31,6 +38,11 @@ MAX_AUDIO_BYTES = 50 * 1024 * 1024
 OMR_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bandproject-omr")
 OMR_JOBS: dict[str, dict] = {}
 OMR_JOBS_LOCK = Lock()
+TRANSCRIPTION_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bandproject-transcription")
+TRANSCRIPTION_JOBS: dict[str, dict] = {}
+TRANSCRIPTION_JOBS_LOCK = Lock()
+TARGET_INSTRUMENTS = {"guitar", "bass", "piano", "vocals", "drums", "chords", "lead-sheet", "auto"}
+SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 
 @app.get("/health")
@@ -135,38 +147,119 @@ def recognize_with_audiveris(content: bytes, suffix: str) -> dict:
 
 
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)) -> dict:
+async def transcribe(file: UploadFile = File(...), target_instrument: str = Form("auto"), source_type: str = Form("unknown"), strict_rhythm: bool = Form(False)) -> dict:
     content = await limited_read(file, MAX_AUDIO_BYTES)
     suffix = Path(file.filename or "audio.wav").suffix.lower()
+    return transcribe_audio(content, suffix, file.filename or "audio.wav", target_instrument, source_type, strict_rhythm)
+
+
+@app.post("/transcribe/jobs", status_code=202)
+async def create_transcription_job(file: UploadFile = File(...), target_instrument: str = Form("auto"), source_type: str = Form("unknown"), strict_rhythm: bool = Form(False)) -> dict:
+    """Queue long audio transcription without tying up a public HTTP proxy."""
+    content = await limited_read(file, MAX_AUDIO_BYTES)
+    suffix = Path(file.filename or "audio.wav").suffix.lower()
+    validate_audio_request(suffix, target_instrument, source_type)
+    job_id = uuid4().hex
+    with TRANSCRIPTION_JOBS_LOCK:
+        TRANSCRIPTION_JOBS[job_id] = {"status": "queued", "stage": "queued"}
+    TRANSCRIPTION_EXECUTOR.submit(run_transcription_job, job_id, content, suffix, file.filename or "audio.wav", target_instrument, source_type, strict_rhythm)
+    return {"jobId": job_id, "status": "queued", "stage": "queued"}
+
+
+@app.get("/transcribe/jobs/{job_id}")
+def get_transcription_job(job_id: str):
+    with TRANSCRIPTION_JOBS_LOCK:
+        job = TRANSCRIPTION_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, "Transcription job not found. It may have expired after a service restart.")
+    if job["status"] == "failed":
+        return JSONResponse(status_code=422, content={"status": "failed", "stage": "failed", "error": job["error"]})
+    if job["status"] != "completed":
+        return {"status": job["status"], "stage": job["stage"]}
+    return {"status": "completed", "stage": "completed", **job["result"]}
+
+
+def run_transcription_job(job_id: str, content: bytes, suffix: str, filename: str, target_instrument: str, source_type: str, strict_rhythm: bool) -> None:
+    with TRANSCRIPTION_JOBS_LOCK:
+        TRANSCRIPTION_JOBS[job_id] = {"status": "processing", "stage": "transcribing"}
+    try:
+        result = transcribe_audio(content, suffix, filename, target_instrument, source_type, strict_rhythm)
+    except HTTPException as error:
+        with TRANSCRIPTION_JOBS_LOCK:
+            TRANSCRIPTION_JOBS[job_id] = {"status": "failed", "error": str(error.detail)}
+        return
+    except Exception as error:
+        with TRANSCRIPTION_JOBS_LOCK:
+            TRANSCRIPTION_JOBS[job_id] = {"status": "failed", "error": f"Audio transcription failed: {error}"}
+        return
+    with TRANSCRIPTION_JOBS_LOCK:
+        TRANSCRIPTION_JOBS[job_id] = {"status": "completed", "result": result}
+
+
+def validate_audio_request(suffix: str, target_instrument: str, source_type: str) -> None:
     if suffix not in {".wav", ".mp3", ".m4a", ".ogg", ".flac"}:
         raise HTTPException(415, "Basic Pitch accepts WAV, MP3, M4A, OGG, and FLAC files.")
+    if target_instrument not in TARGET_INSTRUMENTS:
+        raise HTTPException(400, f"Unsupported target instrument: {target_instrument}.")
+    if source_type not in SOURCE_TYPES:
+        raise HTTPException(400, f"Unsupported source type: {source_type}.")
+
+
+def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrument: str, source_type: str, strict_rhythm: bool) -> dict:
+    validate_audio_request(suffix, target_instrument, source_type)
     try:
-        from basic_pitch.inference import predict
         from music21 import converter
     except ImportError as error:
-        raise HTTPException(503, "Basic Pitch and music21 are not installed in the processing service.") from error
+        raise HTTPException(503, "music21 is not installed in the processing service.") from error
     with tempfile.TemporaryDirectory(prefix="bandproject-audio-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
-        midi_path = work / "transcription.mid"
         xml_path = work / "transcription.musicxml"
         source.write_bytes(content)
+        request = TranscriptionRequest(
+            request_id=uuid4().hex,
+            audio=AudioAsset(filename=filename, mime_type="audio/unknown", byte_size=len(content), source_type=source_type),  # type: ignore[arg-type]
+            target_instrument=target_instrument,  # type: ignore[arg-type]
+            strict_rhythm=strict_rhythm,
+        )
+        separator = DemucsSourceSeparator(work / "stems") if os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" else None
+        pipeline = TranscriptionPipeline(
+            preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
+            transcriber=BasicPitchTranscriber(work / "artifacts"),
+            separator=separator,
+            beat_tracker=LibrosaBeatTracker(),
+            quantizer=GridRhythmQuantizer(),
+            score_exporter=Music21ScoreExporter(),
+            score_artifacts_directory=work / "artifacts",
+        )
         try:
-            _model_output, midi_data, raw_events = predict(str(source))
-            midi_data.write(str(midi_path))
-            score = converter.parse(str(midi_path))
-            score.write("musicxml", fp=str(xml_path))
+            result = pipeline.run(request, source)
+            if result.midi_path is None:
+                raise RuntimeError("Basic Pitch did not produce a MIDI artifact.")
+            if result.musicxml is None:
+                score = converter.parse(str(result.midi_path))
+                score.write("musicxml", fp=str(xml_path))
+        except RuntimeError as error:
+            raise HTTPException(503, str(error)) from error
         except Exception as error:
             raise HTTPException(422, f"Basic Pitch could not transcribe this audio: {error}") from error
-        events = [normalize_note_event(event) for event in raw_events]
-        return {
-            "musicXml": xml_path.read_text(encoding="utf-8"),
-            "midiBase64": base64.b64encode(midi_path.read_bytes()).decode("ascii"),
-            "noteEvents": events,
+        result = replace_transcription_exports(
+            result,
+            musicxml=result.musicxml or xml_path.read_text(encoding="utf-8"),
+            midi_base64=base64.b64encode(result.midi_path.read_bytes()).decode("ascii"),
+        )
+        payload = result.to_api_dict()
+        payload.update({
             "provider": "Spotify Basic Pitch + music21",
             "mode": "real",
-            "warnings": ["Polyphonic transcription is a machine-generated draft and should be reviewed."],
-        }
+        })
+        return payload
+
+
+def replace_transcription_exports(result, *, musicxml: str, midi_base64: str):
+    """Avoid mutating the immutable domain result while adding derived exports."""
+    from dataclasses import replace
+    return replace(result, musicxml=musicxml, midi_base64=midi_base64)
 
 
 async def limited_read(file: UploadFile, maximum: int) -> bytes:

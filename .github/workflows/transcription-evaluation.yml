@@ -1,0 +1,52 @@
+name: Transcription evaluation
+
+on:
+  push:
+    paths:
+      - "evaluation/**"
+      - "services/music-processor/**"
+      - ".github/workflows/transcription-evaluation.yml"
+  pull_request:
+    paths:
+      - "evaluation/**"
+      - "services/music-processor/**"
+      - ".github/workflows/transcription-evaluation.yml"
+  workflow_dispatch:
+
+jobs:
+  evaluator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Test metric calculations
+        run: python -m unittest discover -s evaluation/tests -p 'test_*.py'
+      - name: Test transcription architecture contracts
+        run: python -m unittest discover -s services/music-processor/tests -p 'test_*.py'
+      - name: Test training-data contract
+        run: python -m unittest discover -s training/tests -p 'test_*.py'
+      - name: Validate the example training manifest
+        run: python training/validate_dataset.py training/manifest.example.json
+      - name: Run evaluation smoke fixture
+        run: >-
+          python evaluation/evaluate.py
+          --manifest evaluation/manifest.example.json
+          --output evaluation-report.json
+          --fail-on-regression
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transcription-evaluation-report
+          path: evaluation-report.json
+
+  processor-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the production processor image
+        run: docker build -t bandproject-music-processor services/music-processor
+      - name: Verify installed transcription runtimes
+        run: >-
+          docker run --rm --entrypoint python bandproject-music-processor
+          -c "import app; import librosa; from basic_pitch.inference import predict; print(app.health())"

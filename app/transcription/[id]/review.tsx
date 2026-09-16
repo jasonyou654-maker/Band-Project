@@ -1,0 +1,15 @@
+"use client";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { NotationRenderer } from "@/app/components/NotationRenderer";
+
+type Result = { status?: string; stage?: string; error?: string; musicXml?: string; warnings?: string[] };
+export default function ScoreReview({ id }: { id: string }) {
+  const router = useRouter(); const [result, setResult] = useState<Result | null>(null); const [operations, setOperations] = useState("[]"); const [consent, setConsent] = useState(false); const [notice, setNotice] = useState("");
+  const load = useCallback(async () => { const response = await fetch(`/api/transcription/jobs/${id}`, { cache: "no-store" }); setResult(await response.json() as Result); }, [id]);
+  useEffect(() => { queueMicrotask(() => void load()); const timer = window.setInterval(() => void load(), 8_000); return () => window.clearInterval(timer); }, [load]);
+  async function save(event: FormEvent) { event.preventDefault(); let value: unknown; try { value = JSON.parse(operations); if (!Array.isArray(value)) throw new Error(); } catch { return setNotice("修订操作必须是 JSON 数组。"); } const response = await fetch(`/api/transcription/jobs/${id}/revisions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ operations: value, consentedForTraining: consent }) }); setNotice(response.ok ? "修订已作为私人版本保存。" : "无法保存修订。"); }
+  async function remove() { if (!window.confirm("删除将永久移除音频、结果和所有修订，是否继续？")) return; const response = await fetch(`/api/transcription/jobs/${id}`, { method: "DELETE" }); if (response.ok) router.push("/transcription"); else setNotice("无法删除这项私人任务。"); }
+  return <main className="private-workspace"><header><Link href="/transcription">← 我的任务</Link><span>PRIVATE SCORE REVIEW</span><h1>审阅你的草稿</h1><p>只有你和授权管理员可以访问此内容。</p><button className="private-delete" onClick={() => void remove()}>删除此私人任务</button></header>{!result ? <section className="private-upload">正在载入任务…</section> : result.status !== "completed" ? <section className="private-upload"><h2>{result.status === "failed" ? "任务未完成" : "正在处理"}</h2><p>{result.error || `当前阶段：${result.stage || "queued"}`}</p><button onClick={() => void load()}>刷新状态</button></section> : <><section className="private-upload"><h2>生成乐谱</h2>{result.musicXml ? <div className="private-score"><NotationRenderer title="Private transcription draft" musicXml={result.musicXml} /></div> : <p>结果未包含可显示的 MusicXML。</p>}{result.warnings?.map(warning => <p className="private-notice" key={warning}>{warning}</p>)}</section><section className="private-upload"><h2>保存修订操作</h2><form onSubmit={save}><label>操作 JSON<textarea value={operations} onChange={event => setOperations(event.target.value)} rows={7} /></label><label className="consent"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} /> 我同意将这一次匿名修订用于未来模型改进。</label><button>保存私人修订</button></form>{notice && <p className="private-notice">{notice}</p>}</section></>}</main>;
+}

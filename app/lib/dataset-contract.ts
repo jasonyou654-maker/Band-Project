@@ -1,0 +1,8 @@
+export type DatasetAssetInput = { id: string; split: "train" | "validation" | "test"; instrument: string; sourceType: "isolated" | "mix"; audioPath: string; referencePath: string; license: string; consentedForTraining: boolean };
+const instruments = new Set(["guitar", "bass", "piano", "vocals", "drums", "chords", "lead-sheet", "auto"]);
+export function validateDatasetAssets(value: unknown): { assets: DatasetAssetInput[]; errors: string[] } {
+  if (!Array.isArray(value) || !value.length) return { assets: [], errors: ["assets must be a non-empty array"] };
+  const ids = new Set<string>(); const errors: string[] = []; const assets: DatasetAssetInput[] = [];
+  value.forEach((raw, index) => { const item = raw as Partial<DatasetAssetInput>; const prefix = `assets[${index}]`; if (!item || typeof item !== "object") return errors.push(`${prefix} must be an object`); if (!item.id || ids.has(item.id)) errors.push(`${prefix}.id must be unique`); else ids.add(item.id); if (!["train", "validation", "test"].includes(item.split || "")) errors.push(`${prefix}.split is invalid`); if (!instruments.has(item.instrument || "")) errors.push(`${prefix}.instrument is unsupported`); if (!["isolated", "mix"].includes(item.sourceType || "")) errors.push(`${prefix}.sourceType is invalid`); for (const field of ["audioPath", "referencePath", "license"] as const) if (!item[field]?.trim()) errors.push(`${prefix}.${field} must be non-empty`); if (typeof item.consentedForTraining !== "boolean") errors.push(`${prefix}.consentedForTraining must be boolean`); if (!errors.some(error => error.startsWith(prefix))) assets.push(item as DatasetAssetInput); });
+  return { assets, errors };
+}

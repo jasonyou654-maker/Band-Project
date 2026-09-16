@@ -12,6 +12,12 @@ PDF/image → Original source preview → scrollable score viewer
 Audio → TranscriptionProvider → Basic Pitch → MIDI → music21 → MusicXML → OSMD
 ```
 
+Transcription quality is measured before MIDI/MusicXML conversion with the
+versioned benchmark harness in [`evaluation/`](evaluation/README.md). It reports
+note onset/offset F1, timing and pitch error, duplicate and fragmentation rates,
+beat/BPM accuracy, and optional human correction cost by instrument and source
+type.
+
 The Next.js routes are stable integration points:
 
 - `POST /api/omr`

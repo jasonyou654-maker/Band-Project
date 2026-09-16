@@ -17,6 +17,7 @@ WORKDIR /service
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
+COPY transcription ./transcription
 ENV AUDIVERIS_COMMAND=/usr/local/bin/audiveris
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 EXPOSE 4318

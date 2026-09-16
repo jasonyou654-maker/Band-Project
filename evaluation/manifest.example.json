@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "dataset": {
+    "name": "bandproject-smoke-fixture",
+    "version": "1.0.0",
+    "split": "development",
+    "license": "repository test fixture; not production benchmark data"
+  },
+  "run": {
+    "name": "evaluator-smoke-test",
+    "model": "fixture",
+    "pipelineVersion": "raw-events-v1"
+  },
+  "cases": [
+    {
+      "id": "piano-isolated-smoke",
+      "instrument": "piano",
+      "sourceType": "isolated",
+      "referencePath": "fixtures/piano.reference.json",
+      "predictionPath": "fixtures/piano.prediction.json",
+      "durationSeconds": 2.0,
+      "tags": ["clean", "repeated-notes"]
+    }
+  ]
+}
+

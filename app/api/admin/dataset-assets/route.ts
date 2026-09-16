@@ -1,0 +1,11 @@
+import { requirePrivateTranscriptionUser } from "@/app/lib/transcription-access";
+import { validateDatasetAssets } from "@/app/lib/dataset-contract";
+import { getDb } from "@/db";
+import { datasetAssets } from "@/db/schema";
+import { desc } from "drizzle-orm";
+
+export const dynamic = "force-dynamic";
+
+async function admin() { const user = await requirePrivateTranscriptionUser(); if (!user.isAdmin) throw new Response("Administrator access is required.", { status: 403 }); }
+export async function GET() { try { await admin(); const assets = await getDb().select().from(datasetAssets).orderBy(desc(datasetAssets.createdAt)); return Response.json({ assets: assets.map(asset => ({ id: asset.id, split: asset.split, instrument: asset.instrument, sourceType: asset.sourceType, license: asset.license, consentedForTraining: Boolean(asset.consentedForTraining), status: asset.status, createdAt: asset.createdAt })) }); } catch (error) { return error instanceof Response ? error : Response.json({ error: "Dataset registry is temporarily unavailable." }, { status: 503 }); } }
+export async function POST(request: Request) { try { await admin(); const payload = await request.json() as { assets?: unknown }; const { assets, errors } = validateDatasetAssets(payload.assets); if (errors.length) return Response.json({ error: "Dataset manifest is invalid.", errors }, { status: 400 }); const now = Date.now(); await getDb().batch(assets.map(asset => getDb().insert(datasetAssets).values({ id: asset.id, split: asset.split, instrument: asset.instrument, sourceType: asset.sourceType, audioObjectKey: asset.audioPath, referenceObjectKey: asset.referencePath, license: asset.license, consentedForTraining: asset.consentedForTraining ? 1 : 0, status: "registered", createdAt: now }).onConflictDoUpdate({ target: datasetAssets.id, set: { split: asset.split, instrument: asset.instrument, sourceType: asset.sourceType, audioObjectKey: asset.audioPath, referenceObjectKey: asset.referencePath, license: asset.license, consentedForTraining: asset.consentedForTraining ? 1 : 0, status: "registered" } }))); return Response.json({ registered: assets.length }); } catch (error) { return error instanceof Response ? error : Response.json({ error: "Could not register dataset assets." }, { status: 503 }); } }

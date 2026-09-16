@@ -1,0 +1,11 @@
+{
+  "bpm": 120,
+  "beats": [0.0, 0.5, 1.0, 1.5],
+  "notes": [
+    { "start": 0.0, "end": 0.45, "pitch": 60 },
+    { "start": 0.5, "end": 0.95, "pitch": 64 },
+    { "start": 1.0, "end": 1.45, "pitch": 67 },
+    { "start": 1.5, "end": 1.95, "pitch": 67 }
+  ]
+}
+

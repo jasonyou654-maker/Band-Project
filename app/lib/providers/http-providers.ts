@@ -1,11 +1,11 @@
-import { demoMusicXml } from "../musicxml";
-import type { MusicProcessingResult, OMRProvider, TranscriptionProvider } from "./types";
+import type { MusicProcessingResult, OMRProvider, TranscriptionOptions, TranscriptionProvider } from "./types";
 
 abstract class HttpProcessingProvider {
   abstract readonly name: string;
   constructor(private endpoint: string) {}
-  protected async process(file: File): Promise<MusicProcessingResult> {
+  protected async process(file: File, fields: Record<string, string> = {}): Promise<MusicProcessingResult> {
     const body = new FormData(); body.append("file", file);
+    for (const [name, value] of Object.entries(fields)) body.append(name, value);
     const response = await fetch(this.endpoint, { method: "POST", body, signal: AbortSignal.timeout(300_000) });
     const payload = await response.json() as MusicProcessingResult & { error?: string };
     if (!response.ok || !payload.musicXml) throw new Error(payload.error || `${this.name} did not return MusicXML.`);
@@ -20,7 +20,13 @@ export class HttpOMRProvider extends HttpProcessingProvider implements OMRProvid
 
 export class HttpTranscriptionProvider extends HttpProcessingProvider implements TranscriptionProvider {
   readonly name = "Basic Pitch";
-  transcribe(file: File) { return this.process(file); }
+  transcribe(file: File, options: TranscriptionOptions = {}) {
+    return this.process(file, {
+      target_instrument: options.targetInstrument || "auto",
+      source_type: options.sourceType || "unknown",
+      strict_rhythm: String(options.strictRhythm || false),
+    });
+  }
 }
 
 export class UnavailableOMRProvider implements OMRProvider {
@@ -33,10 +39,5 @@ export class UnavailableOMRProvider implements OMRProvider {
 
 export class FallbackTranscriptionProvider implements TranscriptionProvider {
   readonly name = "Transcription fallback";
-  async transcribe(file: File) { return fallback(file, "Basic Pitch is not configured. This preview is a clearly marked sample score, not an audio transcription."); }
-}
-
-function fallback(file: File, warning: string): MusicProcessingResult {
-  const title = file.name.replace(/\.[^/.]+$/, "");
-  return { musicXml: demoMusicXml(title, "Piano", 96, file.size), provider: "BandProject fallback", mode: "fallback", warnings: [warning] };
+  async transcribe(file: File, options?: TranscriptionOptions) { void file; void options; return { provider: "Transcription unavailable", mode: "fallback" as const, warnings: ["Basic Pitch is not configured, so no notes or MusicXML were generated."] }; }
 }
