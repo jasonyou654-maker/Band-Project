@@ -21,4 +21,4 @@ COPY transcription ./transcription
 ENV AUDIVERIS_COMMAND=/usr/local/bin/audiveris
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 EXPOSE 4318
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4318"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-4318}"]

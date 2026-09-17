@@ -69,8 +69,13 @@ uploads are read directly. The bundled `tools/Audiveris.app` is intentionally
 gitignored, so a fresh checkout must install Audiveris separately or connect
 the FastAPI processor with `MUSIC_PROCESSOR_URL`.
 
-For a static GitHub Pages deployment, set the repository Actions variable
-`MUSIC_PROCESSOR_URL` to the public HTTPS URL of `services/music-processor`.
-The build exposes it to the browser as `NEXT_PUBLIC_MUSIC_PROCESSOR_URL`. Set
-the processor's `WEB_ORIGINS` to the website origin so browser uploads pass
-CORS checks.
+For a static GitHub Pages deployment, first deploy
+`services/music-processor` as a Docker web service. A Render Blueprint is
+included in [`render.yaml`](render.yaml); it builds the processor with Basic
+Pitch, music21, ffmpeg, and Audiveris. Then set the repository Actions variable
+`MUSIC_PROCESSOR_URL` to its public HTTPS URL and redeploy GitHub Pages. The
+build exposes it to the browser as `NEXT_PUBLIC_MUSIC_PROCESSOR_URL`, which lets
+the static website create and poll real transcription jobs directly. Set the
+processor's `WEB_ORIGINS` to the website origin so browser uploads pass CORS
+checks. Without this address, GitHub Pages intentionally shows no score rather
+than fabricating notes.

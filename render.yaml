@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: bandproject-music-processor
+    runtime: docker
+    rootDir: services/music-processor
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_ORIGINS
+        value: https://jasonyou654-maker.github.io
