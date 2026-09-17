@@ -277,7 +277,12 @@ def analyze_audio_signal(content: bytes, suffix: str) -> dict:
         source = work / f"source{suffix}"
         source.write_bytes(content)
         try:
-            normalized = FfmpegAudioPreprocessor(work / "normalized").prepare(source)
+            request = TranscriptionRequest(
+                request_id=uuid4().hex,
+                audio=AudioAsset(filename=source.name, mime_type="audio/unknown", byte_size=len(content), source_type="unknown"),
+                target_instrument="auto",
+            )
+            normalized = FfmpegAudioPreprocessor(work / "normalized").normalize(request, source)
             signal, sample_rate = librosa.load(str(normalized.path), sr=22050, mono=True, duration=180)
         except Exception as error:
             raise HTTPException(422, f"Could not decode audio for analysis: {error}") from error
