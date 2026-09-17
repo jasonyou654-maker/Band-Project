@@ -12,6 +12,7 @@ export type AudioAnalysisResult = {
   sections: { name: string; start: number; color: string }[];
   instruments: { name: string; confidence: number }[];
   waveform: number[];
+  analysisSource?: "browser" | "server";
 };
 
 const PITCH_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
@@ -48,6 +49,7 @@ export async function analyzeAudioFile(file: File): Promise<AudioAnalysisResult>
       sections,
       instruments,
       waveform,
+      analysisSource: "browser",
     } as AudioAnalysisResult;
   } finally {
     await context.close();
@@ -110,7 +112,7 @@ function estimateTempo(envelope: number[], framesPerSecond: number) {
   while (bestBpm < 78) bestBpm *= 2;
   while (bestBpm > 170) bestBpm = Math.round(bestBpm / 2);
   const separation = best > 0 ? Math.max(0, (best - second) / best) : 0;
-  return { bpm: bestBpm, confidence: Math.round(62 + separation * 34) };
+  return { bpm: bestBpm, confidence: Math.round(Math.min(100, separation * 100)) };
 }
 
 function goertzel(samples: Float32Array, start: number, length: number, frequency: number, rate: number) {
@@ -153,7 +155,7 @@ function estimateKey(chroma: number[]) {
   }
   candidates.sort((a, b) => b.score - a.score);
   const margin = Math.max(0, (candidates[0].score - candidates[1].score) / candidates[0].score);
-  return { ...candidates[0], confidence: Math.round(58 + Math.min(.36, margin * 4) * 100) };
+  return { ...candidates[0], confidence: Math.round(Math.min(100, margin * 100)) };
 }
 
 function estimateChords(samples: Float32Array, rate: number, keyRoot: number, mode: "major" | "minor") {
@@ -175,17 +177,22 @@ function estimateChords(samples: Float32Array, rate: number, keyRoot: number, mo
     if (chordNames[chordNames.length - 1] !== name) chordNames.push(name);
     scores.push(best.score);
   }
-  const fallback = mode === "minor" ? [keyRoot, (keyRoot + 3) % 12, (keyRoot + 8) % 12, (keyRoot + 7) % 12] : [keyRoot, (keyRoot + 7) % 12, (keyRoot + 9) % 12, (keyRoot + 5) % 12];
-  while (chordNames.length < 4) chordNames.push(`${PITCH_NAMES[fallback[chordNames.length]]}${mode === "minor" && chordNames.length === 0 ? "m" : ""}`);
   const average = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
-  return { chords: chordNames.slice(0, 6), confidence: Math.round(Math.min(88, 56 + average * 90)) };
+  return { chords: average > .045 ? chordNames.slice(0, 6) : [], confidence: Math.round(Math.min(100, average * 1000)) };
 }
 
 function estimateSections(envelope: number[], duration: number) {
-  const count = duration > 210 ? 7 : duration > 120 ? 6 : 4;
+  const average = envelope.reduce((sum, value) => sum + value, 0) / Math.max(1, envelope.length);
+  const boundaries = [0];
+  for (let index = 2; index < envelope.length - 2; index++) {
+    const before = (envelope[index - 2] + envelope[index - 1]) / 2;
+    const after = (envelope[index] + envelope[index + 1]) / 2;
+    if (Math.abs(after - before) > average * 2.5 && boundaries.length < 6) boundaries.push(duration * index / envelope.length);
+  }
+  boundaries.push(duration);
+  const count = Math.max(1, boundaries.length - 1);
   const palette = ["#c9b8e7", "#e9aa6d", "#9ab5a2", "#8ea5c7"];
-  const names = count >= 6 ? ["Intro", "Verse", "Chorus", "Verse", "Bridge", "Chorus", "Outro"] : ["Intro", "Verse", "Chorus", "Outro"];
-  return names.slice(0, count).map((name, index) => ({ name, start: duration * index / count, color: palette[index % palette.length] }));
+  return Array.from({ length: count }, (_, index) => ({ name: `Region ${index + 1}`, start: boundaries[index], color: palette[index % palette.length] }));
 }
 
 function estimateInstruments(samples: Float32Array, rate: number, chroma: number[]) {

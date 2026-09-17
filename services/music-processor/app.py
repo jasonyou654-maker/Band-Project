@@ -153,6 +153,15 @@ async def transcribe(file: UploadFile = File(...), target_instrument: str = Form
     return transcribe_audio(content, suffix, file.filename or "audio.wav", target_instrument, source_type, strict_rhythm)
 
 
+@app.post("/analyze")
+async def analyze(file: UploadFile = File(...)) -> dict:
+    """Measure tempo and global key from the uploaded waveform, without inventing notation."""
+    content = await limited_read(file, MAX_AUDIO_BYTES)
+    suffix = Path(file.filename or "audio.wav").suffix.lower()
+    validate_audio_request(suffix, "auto", "unknown")
+    return analyze_audio_signal(content, suffix)
+
+
 @app.post("/transcribe/jobs", status_code=202)
 async def create_transcription_job(file: UploadFile = File(...), target_instrument: str = Form("auto"), source_type: str = Form("unknown"), strict_rhythm: bool = Form(False)) -> dict:
     """Queue long audio transcription without tying up a public HTTP proxy."""
@@ -254,6 +263,50 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             "mode": "real",
         })
         return payload
+
+
+def analyze_audio_signal(content: bytes, suffix: str) -> dict:
+    try:
+        import librosa
+        import numpy as np
+    except ImportError as error:
+        raise HTTPException(503, "librosa is not installed in the processing service.") from error
+    with tempfile.TemporaryDirectory(prefix="bandproject-analysis-") as directory:
+        work = Path(directory)
+        source = work / f"source{suffix}"
+        source.write_bytes(content)
+        try:
+            normalized = FfmpegAudioPreprocessor(work / "normalized").prepare(source)
+            signal, sample_rate = librosa.load(str(normalized.path), sr=22050, mono=True, duration=180)
+        except Exception as error:
+            raise HTTPException(422, f"Could not decode audio for analysis: {error}") from error
+        if len(signal) < sample_rate * 3:
+            raise HTTPException(422, "Audio is too short to measure tempo and key reliably.")
+        onset = librosa.onset.onset_strength(y=signal, sr=sample_rate)
+        tempo, _ = librosa.beat.beat_track(onset_envelope=onset, sr=sample_rate, trim=False)
+        bpm = float(np.asarray(tempo).reshape(-1)[0])
+        chroma = librosa.feature.chroma_cqt(y=signal, sr=sample_rate).mean(axis=1)
+        chroma = chroma / max(float(chroma.sum()), 1e-9)
+        major = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+        minor = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+        candidates = []
+        for root in range(12):
+            candidates.append((float(np.dot(chroma, np.roll(major, root))), root, "major"))
+            candidates.append((float(np.dot(chroma, np.roll(minor, root))), root, "minor"))
+        candidates.sort(reverse=True)
+        best, runner_up = candidates[0], candidates[1]
+        key_confidence = max(0, min(100, round((best[0] - runner_up[0]) / max(abs(best[0]), 1e-9) * 100)))
+        autocorrelation = np.correlate(onset - onset.mean(), onset - onset.mean(), mode="full")[len(onset) - 1:]
+        tempo_confidence = max(0, min(100, round(float(autocorrelation[1:].max()) / max(float(autocorrelation[0]), 1e-9) * 100)))
+        return {
+            "bpm": round(bpm),
+            "tempoConfidence": tempo_confidence,
+            "key": ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][best[1]],
+            "mode": best[2],
+            "keyConfidence": key_confidence,
+            "provider": "librosa waveform analysis",
+            "warnings": [warning for warning in ["Tempo confidence is low; verify before transcription." if tempo_confidence < 35 else None, "Key confidence is low; verify before transcription." if key_confidence < 20 else None] if warning],
+        }
 
 
 def replace_transcription_exports(result, *, musicxml: str, midi_base64: str):
