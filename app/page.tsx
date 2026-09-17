@@ -3,7 +3,6 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import "./server-analysis.css";
 import { AudioAnalysisResult } from "./lib/audio-analysis";
 import { isMusicXml } from "./lib/musicxml";
 import { NotationRenderer } from "./components/NotationRenderer";
