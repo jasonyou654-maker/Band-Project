@@ -77,15 +77,18 @@ class TranscriptionPipeline:
         canonical_score = None
         midi_path = output.midi_path
         musicxml = None
-        if request.strict_rhythm:
-            if not self.quantizer or not self.score_exporter or not self.score_artifacts_directory:
-                warnings.append("Strict rhythm was requested, but the score quantizer is not configured; returning the unquantized draft.")
-            else:
-                canonical_score = self.quantizer.quantize(refined_events, beat_grid, request.audio.filename, request.target_instrument)
-                exports = self.score_exporter.export(canonical_score, self.score_artifacts_directory)
-                midi_path = exports.midi_path
-                musicxml = exports.musicxml_path.read_text(encoding="utf-8")
-                warnings.extend(canonical_score.warnings)
+        if self.quantizer and self.score_exporter and self.score_artifacts_directory and refined_events:
+            # There must be exactly one notation path. Exporting Basic Pitch's
+            # MIDI through music21 as a fallback silently invents a default
+            # meter and metronome mark. The canonical score preserves measured
+            # timing and emits free rhythm when pulse evidence is insufficient.
+            canonical_score = self.quantizer.quantize(refined_events, beat_grid, request.audio.filename, request.target_instrument)
+            exports = self.score_exporter.export(canonical_score, self.score_artifacts_directory)
+            midi_path = exports.midi_path
+            musicxml = exports.musicxml_path.read_text(encoding="utf-8")
+            warnings.extend(canonical_score.warnings)
+        elif request.strict_rhythm:
+            warnings.append("Strict rhythm was requested, but the score exporter is not configured; no notation was generated.")
         return TranscriptionResult(
             request=request,
             stage=PipelineStage.COMPLETED,

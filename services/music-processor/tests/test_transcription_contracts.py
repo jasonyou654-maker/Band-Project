@@ -27,7 +27,7 @@ from transcription.adapters import TranscriberOutput  # noqa: E402
 from transcription.audio import FfmpegAudioPreprocessor, NormalizedAudio, PassthroughAudioPreprocessor  # noqa: E402
 from transcription.pipeline import TranscriptionPipeline  # noqa: E402
 from transcription.demucs_adapter import DemucsSourceSeparator  # noqa: E402
-from transcription.score import GridRhythmQuantizer, MUSIC21_INSTRUMENT_NAMES  # noqa: E402
+from transcription.score import GridRhythmQuantizer, MUSIC21_INSTRUMENT_NAMES, ScoreExports  # noqa: E402
 from transcription.revisions import ScoreEditOperation, apply_score_operations, correction_training_record  # noqa: E402
 
 
@@ -130,6 +130,42 @@ class TranscriptionContractTests(unittest.TestCase):
         self.assertEqual(len(result.raw_events), 2)
         self.assertEqual(len(result.refined_events), 1)
         self.assertEqual(result.metadata.transcriber, "fake-basic-pitch")
+
+    def test_pipeline_always_uses_canonical_score_export_when_configured(self):
+        class FakeTranscriber:
+            def transcribe(self, audio, target):
+                return TranscriberOutput(
+                    raw_events=(RawNoteEvent(0.1, 0.6, 60, confidence=0.9),),
+                    provider="fake-basic-pitch",
+                    version="test",
+                    parameters={"target": target},
+                )
+
+        class FakeExporter:
+            def export(self, score, output_directory):
+                output_directory.mkdir(parents=True, exist_ok=True)
+                midi_path = output_directory / "score.mid"
+                musicxml_path = output_directory / "score.musicxml"
+                midi_path.write_bytes(b"MThd")
+                musicxml_path.write_text("<score-partwise><measure><senza-misura>free</senza-misura></measure></score-partwise>")
+                return ScoreExports(midi_path=midi_path, musicxml_path=musicxml_path)
+
+        request = TranscriptionRequest(
+            request_id="request-default-export",
+            audio=AudioAsset(filename="take.wav", mime_type="audio/wav", byte_size=1),
+            target_instrument="auto",
+            strict_rhythm=False,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            result = TranscriptionPipeline(
+                preprocessor=PassthroughAudioPreprocessor(),
+                transcriber=FakeTranscriber(),
+                quantizer=GridRhythmQuantizer(),
+                score_exporter=FakeExporter(),
+                score_artifacts_directory=Path(directory),
+            ).run(request, Path("take.wav"))
+        self.assertIsNotNone(result.canonical_score)
+        self.assertIn("senza-misura", result.musicxml or "")
 
     def test_ffmpeg_preprocessor_preserves_stereo_for_separation(self):
         request = TranscriptionRequest(

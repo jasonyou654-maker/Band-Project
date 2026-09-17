@@ -8,6 +8,10 @@ export async function GET() {
     if (!user.isAdmin) return Response.json({ error: "Administrator access is required." }, { status: 403 });
     const [{ getDb }, { datasetAssets, transcriptionJobs }] = await Promise.all([import("@/db"), import("@/db/schema")]);
     const [assets, jobs] = await Promise.all([getDb().select().from(datasetAssets), getDb().select().from(transcriptionJobs)]);
-    return Response.json({ jobs: { total: jobs.length, processing: jobs.filter(job => ["queued", "processing"].includes(job.status)).length, completed: jobs.filter(job => job.status === "completed").length, failed: jobs.filter(job => job.status === "failed").length }, dataset: { total: assets.length, trainingConsented: assets.filter(asset => Boolean(asset.consentedForTraining)).length, bySplit: Object.fromEntries(["train", "validation", "test"].map(split => [split, assets.filter(asset => asset.split === split).length])) } }, { headers: { "Cache-Control": "no-store" } });
+    const recent = jobs
+      .toSorted((left, right) => right.createdAt - left.createdAt)
+      .slice(0, 50)
+      .map(job => ({ id: job.id, ownerEmail: job.ownerEmail, filename: job.filename, targetInstrument: job.targetInstrument, status: job.status, stage: job.stage, error: job.error, createdAt: job.createdAt }));
+    return Response.json({ jobs: { total: jobs.length, processing: jobs.filter(job => ["queued", "processing"].includes(job.status)).length, completed: jobs.filter(job => job.status === "completed").length, failed: jobs.filter(job => job.status === "failed").length, recent }, dataset: { total: assets.length, trainingConsented: assets.filter(asset => Boolean(asset.consentedForTraining)).length, bySplit: Object.fromEntries(["train", "validation", "test"].map(split => [split, assets.filter(asset => asset.split === split).length])) } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) { return error instanceof Response ? error : Response.json({ error: "Administrator overview is temporarily unavailable." }, { status: 503 }); }
 }

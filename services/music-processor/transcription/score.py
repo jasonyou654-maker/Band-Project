@@ -109,7 +109,7 @@ class GridRhythmQuantizer(RhythmQuantizer):
                 for index, notes in sorted(measures.items())
             ),
             warnings=((
-                "Strict rhythm quantization was explicitly requested; review syncopation and tuplets."
+                "Detected note timing was aligned to the measured pulse grid; review syncopation and tuplets."
                 if has_pulse
                 else "No reliable pulse was detected; source note timing is exported in free rhythm without a tempo or meter claim."
             ),),

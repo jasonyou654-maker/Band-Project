@@ -1,4 +1,7 @@
-type StoredObject = { text(): Promise<string> };
+type StoredObject = {
+  text(): Promise<string>;
+  arrayBuffer(): Promise<ArrayBuffer>;
+};
 type PrivateObjectStore = {
   put(key: string, value: ArrayBuffer | string, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
   get(key: string): Promise<StoredObject | null>;

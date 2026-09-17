@@ -224,13 +224,12 @@ def validate_audio_request(suffix: str, target_instrument: str, source_type: str
 def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrument: str, source_type: str, strict_rhythm: bool) -> dict:
     validate_audio_request(suffix, target_instrument, source_type)
     try:
-        from music21 import converter
+        import music21  # noqa: F401
     except ImportError as error:
         raise HTTPException(503, "music21 is not installed in the processing service.") from error
     with tempfile.TemporaryDirectory(prefix="bandproject-audio-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
-        xml_path = work / "transcription.musicxml"
         source.write_bytes(content)
         request = TranscriptionRequest(
             request_id=uuid4().hex,
@@ -250,18 +249,17 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
         )
         try:
             result = pipeline.run(request, source)
-            if result.midi_path is None:
-                raise RuntimeError("Basic Pitch did not produce a MIDI artifact.")
-            if result.musicxml is None:
-                score = converter.parse(str(result.midi_path))
-                score.write("musicxml", fp=str(xml_path))
         except RuntimeError as error:
             raise HTTPException(503, str(error)) from error
         except Exception as error:
             raise HTTPException(422, f"Basic Pitch could not transcribe this audio: {error}") from error
+        if not result.refined_events:
+            raise HTTPException(422, "No reliable note events were detected in this audio; no score was generated.")
+        if result.midi_path is None or result.musicxml is None:
+            raise HTTPException(503, "The canonical score exporter did not produce complete notation artifacts.")
         result = replace_transcription_exports(
             result,
-            musicxml=result.musicxml or xml_path.read_text(encoding="utf-8"),
+            musicxml=result.musicxml,
             midi_base64=base64.b64encode(result.midi_path.read_bytes()).decode("ascii"),
         )
         payload = result.to_api_dict()

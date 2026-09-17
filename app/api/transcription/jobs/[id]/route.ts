@@ -8,6 +8,21 @@ export const dynamic = "force-dynamic";
 
 type ProcessorResult = { status?: string; stage?: string; error?: string; [key: string]: unknown };
 
+async function restartLostProcessorJob(job: typeof transcriptionJobs.$inferSelect, processor: string): Promise<Response | null> {
+  const storedAudio = await privateTranscriptionStore().get(job.sourceObjectKey);
+  if (!storedAudio) return null;
+  const form = new FormData();
+  form.append("file", new Blob([await storedAudio.arrayBuffer()]), job.filename);
+  form.append("target_instrument", job.targetInstrument);
+  form.append("source_type", job.sourceType);
+  form.append("strict_rhythm", String(Boolean(job.strictRhythm)));
+  const response = await fetch(`${processor.replace(/\/$/, "")}/transcribe/jobs`, { method: "POST", body: form, signal: AbortSignal.timeout(30_000) });
+  const payload = await response.json() as { jobId?: string; error?: string };
+  if (!response.ok || !payload.jobId) return null;
+  await getDb().update(transcriptionJobs).set({ remoteJobId: payload.jobId, status: "processing", stage: "queued", error: null, updatedAt: Date.now() }).where(eq(transcriptionJobs.id, job.id));
+  return Response.json({ ...publicJob(job), status: "processing", stage: "queued", warning: "The processing worker restarted, so the private audio was safely resubmitted." }, { status: 202, headers: { "Cache-Control": "no-store" } });
+}
+
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   let user;
   try { user = await requirePrivateTranscriptionUser(); } catch (error) { return error instanceof Response ? error : Response.json({ error: "Unable to verify identity." }, { status: 500 }); }
@@ -25,6 +40,10 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const response = await fetch(`${processor.replace(/\/$/, "")}/transcribe/jobs/${encodeURIComponent(job.remoteJobId)}`, { signal: AbortSignal.timeout(20_000) });
     const payload = await response.json() as ProcessorResult;
+    if (response.status === 404) {
+      const restarted = await restartLostProcessorJob(job, processor);
+      if (restarted) return restarted;
+    }
     if (!response.ok || payload.status === "failed") {
       const error = payload.error || "Transcription failed.";
       await getDb().update(transcriptionJobs).set({ status: "failed", stage: "failed", error, updatedAt: Date.now() }).where(eq(transcriptionJobs.id, id));
