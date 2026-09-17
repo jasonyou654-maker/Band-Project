@@ -7,7 +7,9 @@ replaced or replaced without changing the UI.
 from __future__ import annotations
 
 import base64
+import audioop
 from concurrent.futures import ThreadPoolExecutor
+import math
 import os
 import shutil
 import subprocess
@@ -16,6 +18,7 @@ from threading import Lock
 from uuid import uuid4
 import zipfile
 import xml.etree.ElementTree as ET
+import wave
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -267,6 +270,89 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
 
 
 def analyze_audio_signal(content: bytes, suffix: str) -> dict:
+    """Low-memory server analysis suitable for the free public worker.
+
+    Keep this endpoint independent of librosa/numba: importing that stack on a
+    512 MB instance can terminate the whole worker before it returns a response.
+    """
+    with tempfile.TemporaryDirectory(prefix="bandproject-analysis-") as directory:
+        work = Path(directory)
+        source = work / f"source{suffix}"
+        source.write_bytes(content)
+        try:
+            request = TranscriptionRequest(
+                request_id=uuid4().hex,
+                audio=AudioAsset(filename=source.name, mime_type="audio/unknown", byte_size=len(content), source_type="unknown"),
+                target_instrument="auto",
+            )
+            normalized = FfmpegAudioPreprocessor(work / "normalized").normalize(request, source)
+            return analyze_normalized_wav(normalized.path, normalized.duration_seconds)
+        except HTTPException:
+            raise
+        except Exception as error:
+            raise HTTPException(422, f"Could not decode audio for analysis: {error}") from error
+
+
+def analyze_normalized_wav(path: Path, duration: float) -> dict:
+    try:
+        with wave.open(str(path), "rb") as audio:
+            channels = audio.getnchannels()
+            sample_width = audio.getsampwidth()
+            sample_rate = audio.getframerate()
+            frame_width = audio.getsampwidth() * channels
+            # 20 energy measurements/second over the first two minutes.
+            frames_per_window = max(1, sample_rate // 20)
+            maximum_frames = min(audio.getnframes(), sample_rate * 120)
+            energies: list[float] = []
+            read_frames = 0
+            while read_frames < maximum_frames:
+                frame_count = min(frames_per_window, maximum_frames - read_frames)
+                raw = audio.readframes(frame_count)
+                if not raw:
+                    break
+                if channels == 2:
+                    raw = audioop.tomono(raw, sample_width, 0.5, 0.5)
+                energies.append(float(audioop.rms(raw, sample_width)))
+                read_frames += frame_count
+    except (wave.Error, EOFError) as error:
+        raise HTTPException(422, f"Normalized audio could not be read: {error}") from error
+    if len(energies) < 60:
+        raise HTTPException(422, "Audio is too short to measure tempo reliably.")
+    peak = max(max(energies), 1.0)
+    centered = [value / peak for value in energies]
+    mean = sum(centered) / len(centered)
+    centered = [value - mean for value in centered]
+    # Evaluate the normal musical pulse range directly; no forced octave folding.
+    candidates: list[tuple[float, int, int]] = []
+    for bpm in range(55, 201):
+        lag = max(1, round(20 * 60 / bpm))
+        if lag >= len(centered):
+            continue
+        score = sum(centered[index] * centered[index - lag] for index in range(lag, len(centered))) / (len(centered) - lag)
+        candidates.append((score, bpm, lag))
+    candidates.sort(reverse=True)
+    best_score, bpm, _ = candidates[0]
+    runner_up = next((score for score, other_bpm, _ in candidates if abs(other_bpm - bpm) > 3), 0.0)
+    confidence = max(0, min(100, round((best_score - runner_up) / max(abs(best_score), 1e-9) * 100)))
+    waveform = [sum(energies[index::84]) / max(1, len(energies[index::84])) / peak for index in range(min(84, len(energies)))]
+    return {
+        "duration": round(duration, 3),
+        "bpm": bpm,
+        "tempoConfidence": confidence,
+        "key": "Unknown",
+        "mode": "major",
+        "keyConfidence": 0,
+        "provider": "ffmpeg server waveform analysis",
+        "waveform": [round(value, 4) for value in waveform],
+        "chords": [],
+        "chordConfidence": 0,
+        "sections": [{"name": "Audio", "start": 0, "color": "#8ea5c7"}],
+        "instruments": [],
+        "warnings": ["Tempo is measured on the server. Key, chords, instruments, and meter are left blank until the full note-transcription job returns verifiable evidence."],
+    }
+
+
+def analyze_audio_signal_with_librosa(content: bytes, suffix: str) -> dict:
     try:
         import librosa
         import numpy as np
