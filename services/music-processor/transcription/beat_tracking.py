@@ -60,7 +60,10 @@ class EnergyBeatTracker:
         best_score, bpm = candidates[0]
         runner_up = next((score for score, other in candidates if abs(other - bpm) > 3), 0.0)
         confidence = max(0.0, min(1.0, (best_score - runner_up) / max(abs(best_score), 1e-9)))
-        if confidence < 0.05:
+        # A weak autocorrelation margin is an interesting candidate, not a
+        # publishable tempo. Keep the confidence for diagnostics but do not let
+        # low-evidence BPM values drive notation or appear as measured facts.
+        if confidence < 0.30:
             return BeatGrid(confidence=confidence)
         return BeatGrid(bpm=bpm, confidence=confidence)
 

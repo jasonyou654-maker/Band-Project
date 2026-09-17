@@ -154,6 +154,11 @@ class TranscriptionResult:
             "notation": {
                 "quantized": self.canonical_score is not None,
                 "measureCount": len(self.canonical_score.measures) if self.canonical_score else None,
+                "rhythmMode": (
+                    "metered" if self.canonical_score and self.beat_grid.time_signature
+                    else "free" if self.canonical_score
+                    else None
+                ),
             },
             "pipeline": asdict(self.metadata) if self.metadata else None,
             "stage": self.stage.value,

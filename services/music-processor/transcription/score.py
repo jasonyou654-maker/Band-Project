@@ -70,15 +70,24 @@ class GridRhythmQuantizer(RhythmQuantizer):
         self.subdivisions_per_beat = subdivisions_per_beat
 
     def quantize(self, events: tuple[RawNoteEvent, ...], beat_grid: BeatGrid, title: str, target_instrument: str) -> CanonicalScore:
-        if not beat_grid.beats_seconds and beat_grid.bpm is None:
-            raise ValueError("Quantization requires beat times or BPM.")
-        beats_per_measure = (beat_grid.time_signature or (4, 4))[0] * 4 / (beat_grid.time_signature or (4, 4))[1]
+        has_pulse = bool(beat_grid.beats_seconds or beat_grid.bpm)
+        beats_per_measure = None
+        if beat_grid.time_signature:
+            beats_per_measure = beat_grid.time_signature[0] * 4 / beat_grid.time_signature[1]
         measures: dict[int, list[QuantizedNote]] = {}
         for event_index, event in enumerate(events):
-            start = self._round_to_grid(self._seconds_to_beats(event.start_seconds, beat_grid))
-            end = self._round_to_grid(self._seconds_to_beats(event.end_seconds, beat_grid))
-            duration = max(Fraction(1, self.subdivisions_per_beat), end - start)
-            measure_index = int(float(start) // beats_per_measure) + 1
+            if has_pulse:
+                start = self._round_to_grid(self._seconds_to_beats(event.start_seconds, beat_grid))
+                end = self._round_to_grid(self._seconds_to_beats(event.end_seconds, beat_grid))
+                duration = max(Fraction(1, self.subdivisions_per_beat), end - start)
+            else:
+                # Preserve relative model timing without inventing a tempo. In
+                # free rhythm, one internal quarterLength represents one second;
+                # no metronome mark is exported, so this is not a BPM claim.
+                start = Fraction(round(event.start_seconds * 1000), 1000)
+                end = Fraction(round(event.end_seconds * 1000), 1000)
+                duration = max(Fraction(1, 1000), end - start)
+            measure_index = int(float(start) // beats_per_measure) + 1 if beats_per_measure else 1
             measures.setdefault(measure_index, []).append(
                 QuantizedNote(
                     pitch=event.midi_pitch,
@@ -97,7 +106,11 @@ class GridRhythmQuantizer(RhythmQuantizer):
                 ScoreMeasure(index=index, notes=tuple(sorted(notes, key=lambda note: (note.start_beat, note.pitch))))
                 for index, notes in sorted(measures.items())
             ),
-            warnings=("Strict rhythm quantization was explicitly requested; review syncopation and tuplets.",),
+            warnings=((
+                "Strict rhythm quantization was explicitly requested; review syncopation and tuplets."
+                if has_pulse
+                else "No reliable pulse was detected; source note timing is exported in free rhythm without a tempo or meter claim."
+            ),),
         )
 
     def _round_to_grid(self, beats: float) -> Fraction:
@@ -147,8 +160,11 @@ class Music21ScoreExporter:
             generic_instrument = instrument.Instrument()
             generic_instrument.partName = "Transcription"
             part.insert(0, generic_instrument)
-        numerator, denominator = score.beat_grid.time_signature or (4, 4)
-        part.insert(0, meter.TimeSignature(f"{numerator}/{denominator}"))
+        if score.beat_grid.time_signature:
+            numerator, denominator = score.beat_grid.time_signature
+            part.insert(0, meter.TimeSignature(f"{numerator}/{denominator}"))
+        else:
+            part.insert(0, meter.SenzaMisuraTimeSignature("free"))
         if score.beat_grid.bpm:
             part.insert(0, tempo.MetronomeMark(number=score.beat_grid.bpm))
         for measure in score.measures:

@@ -9,7 +9,7 @@ export type MusicProcessingResult = {
   noteEvents?: { pitch: number; start: number; end: number; velocity?: number; confidence?: number | null; source?: string; inferred?: boolean }[];
   rawNoteEvents?: { pitch: number; start: number; end: number; velocity?: number; confidence?: number | null; source?: string }[];
   beatGrid?: { bpm?: number | null; beats_seconds?: number[]; time_signature?: [number, number] | null; confidence?: number | null };
-  notation?: { quantized?: boolean; measureCount?: number | null };
+  notation?: { quantized?: boolean; measureCount?: number | null; rhythmMode?: "metered" | "free" | null };
   stage?: string;
   pipeline?: { transcriber?: string; separator?: string | null; parameters?: Record<string, unknown>; processing_seconds?: number | null } | null;
   analysis?: {

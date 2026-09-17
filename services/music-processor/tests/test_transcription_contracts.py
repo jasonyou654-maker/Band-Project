@@ -186,6 +186,18 @@ class TranscriptionContractTests(unittest.TestCase):
         self.assertEqual(note.start_beat, 1 / 2)
         self.assertEqual(note.duration_beats, 1)
 
+    def test_grid_quantizer_uses_free_rhythm_without_pulse_evidence(self):
+        score = GridRhythmQuantizer().quantize(
+            (RawNoteEvent(0.123, 0.789, 64, confidence=0.8),),
+            BeatGrid(confidence=0.2),
+            "Clip",
+            "auto",
+        )
+        self.assertIsNone(score.beat_grid.bpm)
+        self.assertIsNone(score.beat_grid.time_signature)
+        self.assertEqual(len(score.measures), 1)
+        self.assertIn("free rhythm", score.warnings[0])
+
     def test_auto_target_does_not_claim_a_music21_instrument(self):
         self.assertNotIn("auto", MUSIC21_INSTRUMENT_NAMES)
         self.assertEqual(MUSIC21_INSTRUMENT_NAMES["guitar"], "Acoustic Guitar")
