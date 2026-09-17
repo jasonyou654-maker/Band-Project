@@ -52,6 +52,7 @@ def health() -> dict:
         "audiveris": bool(shutil.which(AUDIVERIS_COMMAND)),
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
+        "sourceSeparation": False,
     }
 
 
