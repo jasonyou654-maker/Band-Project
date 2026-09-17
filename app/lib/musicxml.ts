@@ -6,9 +6,9 @@ const ALTERS = [0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0];
 export function noteEventsToMusicXml(title: string, instrument: string, bpm: number, events: NoteEvent[]) {
   const divisions = 4;
   const secondsPerDivision = 60 / Math.max(30, bpm) / divisions;
-  const normalized = events.length ? events : [{ pitch: 60, start: 0, end: .5 }];
+  if (events.length === 0) throw new Error("Cannot generate MusicXML without note evidence.");
   const byMeasure = new Map<number, { offset: number; pitch: number; duration: number }[]>();
-  for (const event of normalized) {
+  for (const event of events) {
     const startDivision = Math.max(0, Math.round(event.start / secondsPerDivision));
     const measure = Math.floor(startDivision / (divisions * 4));
     const offset = startDivision % (divisions * 4);
@@ -34,16 +34,6 @@ export function noteEventsToMusicXml(title: string, instrument: string, bpm: num
   }).join("");
   return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>BandProject MusicXML pipeline</software></encoding></identification><part-list><score-part id="P1"><part-name>${escapeXml(instrument)}</part-name></score-part></part-list><part id="P1">${measures}</part></score-partwise>`;
 }
-
-export function demoMusicXml(title: string, instrument = "Piano", bpm = 96, seed = 0) {
-  const patterns = [[60,64,67,72,69,67,64,62],[62,66,69,74,71,69,66,64],[57,60,64,69,67,64,60,59],[65,69,72,77,76,72,69,67]];
-  const pattern = patterns[Math.abs(seed) % patterns.length];
-  const beat = 60 / Math.max(30, bpm);
-  const events = Array.from({ length: 32 }, (_, index) => ({ pitch: pattern[index % pattern.length], start: index * beat, end: (index + .82) * beat }));
-  return noteEventsToMusicXml(title, instrument, bpm, events);
-}
-
-export function practiceMusicXml(title: string) { return demoMusicXml(title); }
 
 export function isMusicXml(value: string) {
   return /<score-(partwise|timewise)[\s>]/i.test(value) && /<part[\s>]/i.test(value);
