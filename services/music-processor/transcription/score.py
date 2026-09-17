@@ -165,15 +165,23 @@ class Music21ScoreExporter:
         if score.beat_grid.time_signature:
             numerator, denominator = score.beat_grid.time_signature
             part.insert(0, meter.TimeSignature(f"{numerator}/{denominator}"))
+            notation_stream = part
         else:
-            part.insert(0, meter.SenzaMisuraTimeSignature("free"))
+            # Put senza-misura directly in the first measure. A time signature
+            # attached only to Part makes music21 prepend its implicit 4/4
+            # before the free-meter declaration during MusicXML export.
+            free_measure = stream.Measure(number=1)
+            free_measure.insert(0, meter.SenzaMisuraTimeSignature("free"))
+            notation_stream = free_measure
         if score.beat_grid.bpm:
             part.insert(0, tempo.MetronomeMark(number=score.beat_grid.bpm))
         for measure in score.measures:
             for quantized in measure.notes:
                 rendered_note = note.Note(quantized.pitch)
                 rendered_note.quarterLength = float(quantized.duration_beats)
-                part.insert(float(quantized.start_beat), rendered_note)
+                notation_stream.insert(float(quantized.start_beat), rendered_note)
+        if notation_stream is not part:
+            part.append(notation_stream)
         rendered.insert(0, part)
         midi_path = output_directory / "canonical-score.mid"
         musicxml_path = output_directory / "canonical-score.musicxml"
