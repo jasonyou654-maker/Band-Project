@@ -1,7 +1,10 @@
 import type { MusicProcessingResult } from "./providers/types";
 
+const STATIC_PROCESSOR_URL = "https://bandproject-music-processor.onrender.com";
+
 function publicProcessorUrl(): string | undefined {
-  return process.env.NEXT_PUBLIC_MUSIC_PROCESSOR_URL?.replace(/\/$/, "") || undefined;
+  return process.env.NEXT_PUBLIC_MUSIC_PROCESSOR_URL?.replace(/\/$/, "")
+    || (process.env.NEXT_PUBLIC_STATIC_SITE === "true" ? STATIC_PROCESSOR_URL : undefined);
 }
 
 export async function transcribeAudio(file: File, options: { targetInstrument: string; sourceType?: "isolated" | "mix" | "unknown" }): Promise<MusicProcessingResult> {
