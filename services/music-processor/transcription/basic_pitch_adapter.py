@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from threading import Lock
 from time import perf_counter
 from typing import Any
 
@@ -37,6 +38,29 @@ PROFILES: dict[TargetInstrument, BasicPitchProfile] = {
 }
 
 
+_MODEL: Any | None = None
+_MODEL_LOCK = Lock()
+
+
+def _shared_model() -> Any:
+    """Load the official Basic Pitch model once per worker process.
+
+    ``predict`` accepts an already loaded Model. The public worker processes one
+    transcription at a time, so retaining this relatively small model avoids a
+    full model parse on every upload without introducing concurrent inference.
+    """
+    global _MODEL
+    if _MODEL is not None:
+        return _MODEL
+    with _MODEL_LOCK:
+        if _MODEL is None:
+            from basic_pitch import ICASSP_2022_MODEL_PATH
+            from basic_pitch.inference import Model
+
+            _MODEL = Model(ICASSP_2022_MODEL_PATH)
+    return _MODEL
+
+
 def raw_event_from_basic_pitch(event: Any, source: str = "basic-pitch") -> RawNoteEvent:
     if isinstance(event, dict):
         start = float(event.get("start_time_s", event.get("start", 0)))
@@ -56,8 +80,9 @@ class BasicPitchTranscriber:
 
     provider = "Spotify Basic Pitch"
 
-    def __init__(self, artifacts_directory: Path | None = None) -> None:
+    def __init__(self, artifacts_directory: Path | None = None, *, retain_raw_output: bool = False) -> None:
         self.artifacts_directory = artifacts_directory
+        self.retain_raw_output = retain_raw_output
 
     def transcribe(self, audio: NormalizedAudio, target: TargetInstrument) -> TranscriberOutput:
         try:
@@ -73,6 +98,7 @@ class BasicPitchTranscriber:
         started = perf_counter()
         model_output, midi_data, raw_events = predict(
             str(audio.path),
+            model_or_model_path=_shared_model(),
             onset_threshold=profile.onset_threshold,
             frame_threshold=profile.frame_threshold,
             minimum_note_length=profile.minimum_note_length_ms,
@@ -83,7 +109,7 @@ class BasicPitchTranscriber:
         )
         artifact_directory = self._artifact_directory(audio.path)
         midi_path = artifact_directory / "basic-pitch.mid" if artifact_directory else None
-        raw_output_path = artifact_directory / "basic-pitch-raw.npz" if artifact_directory else None
+        raw_output_path = artifact_directory / "basic-pitch-raw.npz" if artifact_directory and self.retain_raw_output else None
         if midi_path:
             midi_data.write(str(midi_path))
         if raw_output_path:
