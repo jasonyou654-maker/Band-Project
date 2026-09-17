@@ -12,6 +12,19 @@ from pathlib import Path
 from .contracts import BeatGrid, RawNoteEvent
 
 
+MUSIC21_INSTRUMENT_NAMES: dict[str, str] = {
+    "guitar": "Acoustic Guitar",
+    "bass": "Electric Bass",
+    "piano": "Piano",
+    "vocals": "Voice",
+    "drums": "Percussion",
+    # These targets describe notation intent, not an instrument detected in the
+    # signal. Piano is only used as a neutral playback voice for their exports.
+    "chords": "Piano",
+    "lead-sheet": "Piano",
+}
+
+
 @dataclass(frozen=True)
 class QuantizedNote:
     pitch: int
@@ -125,7 +138,15 @@ class Music21ScoreExporter:
         rendered = stream.Score()
         rendered.metadata = metadata.Metadata(title=score.title)
         part = stream.Part()
-        part.insert(0, instrument.fromString(score.target_instrument.title()))
+        instrument_name = MUSIC21_INSTRUMENT_NAMES.get(score.target_instrument)
+        if instrument_name:
+            part.insert(0, instrument.fromString(instrument_name))
+        else:
+            # "auto" means no instrument was established by evidence. A plain
+            # Instrument keeps the score exportable without asserting a label.
+            generic_instrument = instrument.Instrument()
+            generic_instrument.partName = "Transcription"
+            part.insert(0, generic_instrument)
         numerator, denominator = score.beat_grid.time_signature or (4, 4)
         part.insert(0, meter.TimeSignature(f"{numerator}/{denominator}"))
         if score.beat_grid.bpm:

@@ -1,8 +1,13 @@
 from pathlib import Path
 import struct
+import sys
 import tempfile
 import unittest
 import wave
+
+
+SERVICE_ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(SERVICE_ROOT))
 
 from transcription.audio import NormalizedAudio
 from transcription.beat_tracking import EnergyBeatTracker

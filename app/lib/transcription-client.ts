@@ -25,27 +25,41 @@ function publicProcessorUrl(): string | undefined {
 
 export async function transcribeAudio(file: File, options: { targetInstrument: string; sourceType?: "isolated" | "mix" | "unknown"; onStatus?: (status: "queued" | "transcribing") => void }): Promise<MusicProcessingResult> {
   const processor = publicProcessorUrl();
-  const body = new FormData();
-  body.append("file", file);
-  body.append("target_instrument", options.targetInstrument);
-  body.append("source_type", options.sourceType || "unknown");
-  body.append("strict_rhythm", "true");
+  const createRequestBody = () => {
+    const body = new FormData();
+    body.append("file", file);
+    body.append("target_instrument", options.targetInstrument);
+    body.append("source_type", options.sourceType || "unknown");
+    body.append("strict_rhythm", "true");
+    return body;
+  };
 
   if (!processor) {
-    const response = await fetch("/api/transcribe", { method: "POST", body });
+    const response = await fetch("/api/transcribe", { method: "POST", body: createRequestBody() });
     const payload = await response.json().catch(() => ({})) as MusicProcessingResult & { error?: string };
     if (!response.ok || !payload.musicXml) throw new Error(payload.error || "转录服务没有返回真实的 MusicXML。");
     return payload;
   }
 
-  let queued: Response;
-  try {
-    queued = await fetch(`${processor}/transcribe/jobs`, { method: "POST", body, signal: AbortSignal.timeout(60_000) });
-  } catch {
-    throw new Error("无法连接扒谱服务。服务可能正在启动，请稍后重试。");
-  }
-  const queuedPayload = await queued.json().catch(() => ({})) as { jobId?: string; error?: string };
-  if (!queued.ok || !queuedPayload.jobId) throw new Error(queuedPayload.error || "扒谱服务无法创建任务。");
+  const enqueue = async () => {
+    let queued: Response;
+    try {
+      queued = await fetch(`${processor}/transcribe/jobs`, {
+        method: "POST",
+        body: createRequestBody(),
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch {
+      throw new Error("无法连接扒谱服务。免费服务可能正在启动，请稍后重试。");
+    }
+    const payload = await queued.json().catch(() => ({})) as { jobId?: string; error?: string };
+    if (!queued.ok || !payload.jobId) throw new Error(payload.error || "扒谱服务无法创建任务。");
+    return payload.jobId;
+  };
+
+  let jobId = await enqueue();
+  let restartRetries = 0;
+  let connectionFailures = 0;
   options.onStatus?.("queued");
 
   const deadline = Date.now() + 10 * 60 * 1000;
@@ -53,13 +67,25 @@ export async function transcribeAudio(file: File, options: { targetInstrument: s
     await new Promise(resolve => window.setTimeout(resolve, 1500));
     let response: Response;
     try {
-      response = await fetch(`${processor}/transcribe/jobs/${encodeURIComponent(queuedPayload.jobId)}`, { cache: "no-store", signal: AbortSignal.timeout(60_000) });
+      response = await fetch(`${processor}/transcribe/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store", signal: AbortSignal.timeout(60_000) });
     } catch {
-      throw new Error("与扒谱服务的连接中断。任务可能仍在处理中，请稍后重试。");
+      connectionFailures += 1;
+      if (connectionFailures <= 3) continue;
+      throw new Error("与扒谱服务的连接持续中断。请稍后重试，系统不会用虚拟结果替代。");
     }
+    connectionFailures = 0;
     const payload = await response.json().catch(() => ({})) as MusicProcessingResult & { status?: string; error?: string; stage?: string };
     if (payload.status === "completed" && payload.musicXml) return payload;
     if (payload.status === "transcribing" || payload.stage === "transcribing") options.onStatus?.("transcribing");
+    if (response.status === 404 && restartRetries < 1) {
+      // Render's free instance can restart while a job is running. Its queue is
+      // intentionally in-memory, so submit the original audio once more rather
+      // than turning a lost job into a fabricated result or a dead-end error.
+      restartRetries += 1;
+      jobId = await enqueue();
+      options.onStatus?.("queued");
+      continue;
+    }
     if (payload.status === "failed" || !response.ok) throw new Error(payload.error || "扒谱服务未能生成真实乐谱。");
   }
   throw new Error("扒谱任务仍在处理中，请稍后重试。系统不会以虚拟音符代替真实结果。");

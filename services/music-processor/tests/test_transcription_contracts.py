@@ -27,7 +27,7 @@ from transcription.adapters import TranscriberOutput  # noqa: E402
 from transcription.audio import FfmpegAudioPreprocessor, NormalizedAudio, PassthroughAudioPreprocessor  # noqa: E402
 from transcription.pipeline import TranscriptionPipeline  # noqa: E402
 from transcription.demucs_adapter import DemucsSourceSeparator  # noqa: E402
-from transcription.score import GridRhythmQuantizer  # noqa: E402
+from transcription.score import GridRhythmQuantizer, MUSIC21_INSTRUMENT_NAMES  # noqa: E402
 from transcription.revisions import ScoreEditOperation, apply_score_operations, correction_training_record  # noqa: E402
 
 
@@ -185,6 +185,10 @@ class TranscriptionContractTests(unittest.TestCase):
         self.assertEqual(note.pitch, 64)
         self.assertEqual(note.start_beat, 1 / 2)
         self.assertEqual(note.duration_beats, 1)
+
+    def test_auto_target_does_not_claim_a_music21_instrument(self):
+        self.assertNotIn("auto", MUSIC21_INSTRUMENT_NAMES)
+        self.assertEqual(MUSIC21_INSTRUMENT_NAMES["guitar"], "Acoustic Guitar")
 
     def test_score_operations_are_replayable_and_training_record_is_opt_in(self):
         score = GridRhythmQuantizer().quantize(
