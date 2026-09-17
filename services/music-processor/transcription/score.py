@@ -84,9 +84,11 @@ class GridRhythmQuantizer(RhythmQuantizer):
                 # Preserve relative model timing without inventing a tempo. In
                 # free rhythm, one internal quarterLength represents one second;
                 # no metronome mark is exported, so this is not a BPM claim.
-                start = Fraction(round(event.start_seconds * 1000), 1000)
-                end = Fraction(round(event.end_seconds * 1000), 1000)
-                duration = max(Fraction(1, 1000), end - start)
+                # Snap to the configured notation grid because arbitrary
+                # millisecond fractions cannot always be expressed in MusicXML.
+                start = self._round_to_grid(event.start_seconds)
+                end = self._round_to_grid(event.end_seconds)
+                duration = max(Fraction(1, self.subdivisions_per_beat), end - start)
             measure_index = int(float(start) // beats_per_measure) + 1 if beats_per_measure else 1
             measures.setdefault(measure_index, []).append(
                 QuantizedNote(
