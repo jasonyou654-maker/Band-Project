@@ -2,6 +2,7 @@ services:
   - type: web
     name: bandproject-music-processor
     runtime: docker
+    plan: free
     rootDir: services/music-processor
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
