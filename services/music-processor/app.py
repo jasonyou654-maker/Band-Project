@@ -53,6 +53,7 @@ SOURCE_TYPES = {"isolated", "mix", "unknown"}
 def health() -> dict:
     return {
         "status": "ready",
+        "revision": os.getenv("RENDER_GIT_COMMIT", "local")[:7],
         "audiveris": bool(shutil.which(AUDIVERIS_COMMAND)),
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
