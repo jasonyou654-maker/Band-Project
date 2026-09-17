@@ -298,13 +298,22 @@ def analyze_audio_signal(content: bytes, suffix: str) -> dict:
         key_confidence = max(0, min(100, round((best[0] - runner_up[0]) / max(abs(best[0]), 1e-9) * 100)))
         autocorrelation = np.correlate(onset - onset.mean(), onset - onset.mean(), mode="full")[len(onset) - 1:]
         tempo_confidence = max(0, min(100, round(float(autocorrelation[1:].max()) / max(float(autocorrelation[0]), 1e-9) * 100)))
+        amplitude = np.abs(signal)
+        waveform = [float(chunk.mean()) for chunk in np.array_split(amplitude, 84)]
+        waveform_peak = max(max(waveform), 1e-9)
         return {
+            "duration": round(len(signal) / sample_rate, 3),
             "bpm": round(bpm),
             "tempoConfidence": tempo_confidence,
             "key": ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"][best[1]],
             "mode": best[2],
             "keyConfidence": key_confidence,
             "provider": "librosa waveform analysis",
+            "waveform": [round(value / waveform_peak, 4) for value in waveform],
+            "chords": [],
+            "chordConfidence": 0,
+            "sections": [{"name": "Audio", "start": 0, "color": "#8ea5c7"}],
+            "instruments": [],
             "warnings": [warning for warning in ["Tempo confidence is low; verify before transcription." if tempo_confidence < 35 else None, "Key confidence is low; verify before transcription." if key_confidence < 20 else None] if warning],
         }
 

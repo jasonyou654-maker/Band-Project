@@ -6,7 +6,7 @@ export type AudioAnalysisResult = {
   key: string;
   mode: "major" | "minor";
   keyConfidence: number;
-  timeSignature: "4/4";
+  timeSignature: "4/4" | null;
   chords: string[];
   chordConfidence: number;
   sections: { name: string; start: number; color: string }[];

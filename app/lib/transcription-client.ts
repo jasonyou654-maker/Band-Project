@@ -1,12 +1,18 @@
 import type { MusicProcessingResult } from "./providers/types";
 
 export type ServerAudioAnalysis = {
+  duration: number;
   bpm: number;
   tempoConfidence: number;
   key: string;
   mode: "major" | "minor";
   keyConfidence: number;
   provider: string;
+  waveform: number[];
+  chords: string[];
+  chordConfidence: number;
+  sections: { name: string; start: number; color: string }[];
+  instruments: { name: string; confidence: number }[];
   warnings: string[];
 };
 
