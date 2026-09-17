@@ -3,12 +3,11 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { AudioAnalysisResult } from "./lib/audio-analysis";
 import { isMusicXml } from "./lib/musicxml";
 import { NotationRenderer } from "./components/NotationRenderer";
 import type { MusicProcessingResult } from "./lib/providers/types";
 import { formatFileSize, isDirectMusicXml, SCORE_ACCEPT, scoreFileKind, validateScoreFile } from "./lib/omr-client";
-import { analyzeAudioOnServer, hasPublicTranscriptionProcessor, transcribeAudio } from "./lib/transcription-client";
+import { transcribeAudio } from "./lib/transcription-client";
 
 const isStaticSite = process.env.NEXT_PUBLIC_STATIC_SITE === "true";
 
@@ -284,6 +283,7 @@ function Upload({ done, publish }: { done: () => void; publish: (sheet: Sheet) =
 }
 
 
+/* Legacy analysis UI removed from the live product because it contained browser estimates and placeholder visualization.
 function MeasuredWaveform({ values, active = false }: { values?: number[]; active?: boolean }) { const bars = values || Array.from({length:84},(_,i)=>.18+((i*37)%54)/100); return <div className={`waveform ${active ? "active" : ""}`}>{bars.map((value,i)=><i key={i} style={{height:`${Math.max(10,value*100)}%`,opacity:.35+((i*17)%7)/10,animationDelay:`${-(i%11)*.07}s`}}/>)}</div>; }
 
 function TranscriptionView({result,serverScore,target,saved,setSaved,back}:{result:AudioAnalysisResult;serverScore:MusicProcessingResult|null;target:string;saved:boolean;setSaved:(value:boolean)=>void;back:()=>void}) {
@@ -293,7 +293,7 @@ function TranscriptionView({result,serverScore,target,saved,setSaved,back}:{resu
   return <main className="transcription-page"><button className="back" onClick={back}><Icon name="back"/> Back to analysis</button><div className="transcription-head"><div><span className="kicker">{musicXml ? "BASIC PITCH → MIDI → MUSICXML" : "NO SCORE GENERATED"}</span><h1>{target} transcription</h1><p>“{result.title}” · {result.key} {result.mode} · {result.bpm} BPM</p></div><div><button className="secondary" onClick={back}><Icon name="edit"/> Adjust analysis</button>{musicXml&&<button className="primary" onClick={()=>downloadSheet({...sheets[0],title:result.title,instrument:target,bpm:result.bpm,musicXml})}><Icon name="download"/> Export MusicXML</button>}</div></div><div className="transcription-layout"><div className="generated-sheet"><div className="sheet-doc-head"><div><h2>{result.title.toUpperCase()}</h2><p>{target} · {provider}</p></div><span>♩ = {result.bpm}</span></div>{musicXml ? <NotationRenderer title={result.title} musicXml={musicXml}/> : <div className="no-score"><h2>未生成乐谱</h2><p>{serverScore?.warnings?.[0] || "转录服务没有返回真实的 MusicXML，因此这里不会显示或导出任何虚拟音符。"}</p></div>}<div className={`provider-status ${mode}`}><b>{musicXml ? "Real server transcription" : "No transcription result"}</b><span>{serverScore?.warnings?.[0] || "Review the generated notation before performance."}</span></div></div><aside><span className="kicker">PROCESSING SOURCE</span><h3>{provider}</h3><ul><li><Icon name="check" size={15}/>{result.bpm} BPM browser signal analysis</li><li><Icon name="check" size={15}/>{result.key} {result.mode} tonal estimate</li><li><Icon name={musicXml ? "check" : "close"} size={15}/>{musicXml ? "Basic Pitch notes converted through MIDI" : "No Basic Pitch note data returned"}</li></ul><button className="save-project" onClick={()=>setSaved(true)}><Icon name={saved ? "check" : "bookmark"}/>{saved ? "Saved to projects" : "Save to projects"}</button></aside></div></main>;
 }
 
-function AnalysisV2() {
+function AnalysisV2Legacy() {
   const [stage,setStage]=useState<"upload"|"analyzing"|"results"|"transcription">("upload"); const [progress,setProgress]=useState(0); const [target,setTarget]=useState("Guitar"); const [saved,setSaved]=useState(false); const [error,setError]=useState(""); const [editing,setEditing]=useState(false); const [result,setResult]=useState<AudioAnalysisResult|null>(null); const [serverScore,setServerScore]=useState<MusicProcessingResult|null>(null); const [audioFile,setAudioFile]=useState<File|null>(null); const [audioUrl,setAudioUrl]=useState(""); const [playing,setPlaying]=useState(false); const [playhead,setPlayhead]=useState(0); const [transcribing,setTranscribing]=useState(false); const [transcriptionStatus,setTranscriptionStatus]=useState<"idle"|"queued"|"transcribing">("idle"); const input=useRef<HTMLInputElement>(null); const player=useRef<HTMLAudioElement>(null); const audioUrlRef=useRef("");
   function targetForApi(){return target.toLowerCase().replace(" ","-")}
   async function requestTranscription(file:File):Promise<MusicProcessingResult>{if(isStaticSite&&!hasPublicTranscriptionProcessor())return {provider:"GitHub Pages browser mode",mode:"fallback",warnings:["未配置公开的扒谱服务，因此没有生成音符或 MusicXML。"]};return transcribeAudio(file,{targetInstrument:targetForApi(),onStatus:setTranscriptionStatus})}
@@ -307,6 +307,82 @@ function AnalysisV2() {
   const duration=(seconds:number)=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,"0")}`;
   if(stage==="transcription") return <TranscriptionView result={result} serverScore={serverScore} target={target} saved={saved} setSaved={setSaved} back={()=>setStage("results")}/>;
   return <main className="results-page"><div className="result-top"><div><span className="ai-label"><i/> SIGNAL ANALYSIS COMPLETE</span><h1>{result.title}</h1><p>{duration(result.duration)} · {result.analysisSource==="server"?"measured by processing service":"rough browser estimate"}</p></div><div className="result-actions"><button className="secondary" onClick={()=>setEditing(!editing)}><Icon name="edit"/> {editing?"Done editing":"Edit results"}</button><button className="secondary" onClick={()=>setStage("upload")}>Analyze another</button></div></div><audio ref={player} src={audioUrl} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onEnded={()=>{setPlaying(false);setPlayhead(0)}} onTimeUpdate={event=>setPlayhead(event.currentTarget.currentTime)}/><div className={`audio-playback ${playing?"playing":""}`}><MeasuredWaveform values={result.waveform} active={playing}/><button className="audio-toggle" type="button" aria-pressed={playing} aria-label={playing?"Pause audio":"Play audio"} onClick={togglePlayback}><Icon name={playing?"pause":"play"} size={15}/><span>{playing?"暂停":"播放"}</span></button><input className="audio-scrubber" aria-label="Audio progress" type="range" min="0" max={result.duration} step="0.01" value={Math.min(playhead,result.duration)} onChange={event=>{const value=Number(event.target.value);setPlayhead(value);if(player.current)player.current.currentTime=value}}/></div><div className="timestamp"><span>{duration(playhead)}</span><span>{duration(result.duration)}</span></div><div className="analysis-grid"><section className="overview-card"><div className="card-label">MEASURED OVERVIEW <span>Editable</span></div><div className="metrics"><div><span>Tempo</span>{editing?<input className="metric-input" type="number" value={result.bpm} onChange={e=>setResult({...result,bpm:Number(e.target.value)})}/>:<b>{result.bpm} <small>BPM</small></b>}<em>{result.tempoConfidence}% confidence</em></div><div><span>Key</span>{editing?<select className="metric-input" value={result.key} onChange={e=>setResult({...result,key:e.target.value})}>{["C","C♯","D","E♭","E","F","F♯","G","A♭","A","B♭","B"].map(k=><option key={k}>{k}</option>)}</select>:<b>{result.key} <small>{result.mode}</small></b>}<em>{result.keyConfidence}% confidence</em></div><div><span>Time</span><b>4/4</b><em>inferred from pulse grouping</em></div></div></section><section className="instrument-card"><div className="card-label">TIMBRAL CANDIDATES <span>{result.instruments.length} detected</span></div><div className="instruments">{result.instruments.map(item=><div key={item.name}><span>{item.name}</span><i><b style={{width:`${item.confidence}%`}}/></i><em>{item.confidence}%</em></div>)}</div><p className="method-note">Instrument labels are broad timbral estimates, not isolated stems.</p></section><section className="chord-card"><div className="card-label">CHORD CANDIDATES <span>{result.chordConfidence}% confidence</span></div><div className="chords">{result.chords.length?result.chords.map((chord,i)=><span key={`${chord}-${i}`} contentEditable={editing} suppressContentEditableWarning>{chord}</span>):<em>没有足够的和声数据</em>}</div><p>Only signal candidates are shown; no chord progression is filled in.</p></section><section className="structure-card"><div className="card-label">ENERGY REGIONS <span>estimated</span></div><div className="timeline">{result.sections.map((section,i)=><span key={`${section.name}-${i}`} style={{background:section.color}}>{section.name}</span>)}</div><div className="timeline-times"><span>0:00</span>{result.sections.slice(1,-1).filter((_,i)=>i%2===0).map(s=><span key={s.start}>{duration(s.start)}</span>)}<span>{duration(result.duration)}</span></div></section></div>{error&&<div className="analysis-error">{error}</div>}<div className="analysis-note"><b>How to read this:</b> confidence reflects separation between the best and next-best signal candidates. Complex mixes, rubato, or tuning drift can reduce accuracy; edit the musical result before generating a draft.</div><section className="transcribe-cta"><div><span className="kicker">NEXT STEP</span><h2>Build a draft from this analysis.</h2><p>The draft uses the measured tempo and key above. It will only display a score when the service returns real MusicXML.</p></div><div className="target-picker">{["Guitar","Bass","Piano","Chords","Lead sheet"].map(item=><button key={item} className={target===item?"active":""} onClick={()=>setTarget(item)} disabled={transcribing}>{item}</button>)}<button className="generate" onClick={generateTranscription} disabled={transcribing}>{transcribing?(transcriptionStatus==="transcribing"?"识别真实音符中…":"任务排队中…"):`Generate ${target}`} {!transcribing&&<Icon name="arrow"/>}</button></div></section></main>;
+}
+*/
+
+function AnalysisV2() {
+  const [stage,setStage]=useState<"upload"|"processing"|"results"|"score">("upload");
+  const [status,setStatus]=useState<"queued"|"transcribing">("queued");
+  const [error,setError]=useState("");
+  const [file,setFile]=useState<File|null>(null);
+  const [audioUrl,setAudioUrl]=useState("");
+  const [score,setScore]=useState<MusicProcessingResult|null>(null);
+  const [target,setTarget]=useState("Auto");
+  const [playing,setPlaying]=useState(false);
+  const [playhead,setPlayhead]=useState(0);
+  const [audioDuration,setAudioDuration]=useState(0);
+  const player=useRef<HTMLAudioElement>(null);
+  const input=useRef<HTMLInputElement>(null);
+  const audioUrlRef=useRef("");
+  useEffect(()=>()=>{if(audioUrlRef.current)URL.revokeObjectURL(audioUrlRef.current)},[]);
+  const analysis=score?.analysis;
+  const title=file?.name.replace(/\.[^/.]+$/,"").replace(/[_-]+/g," ")||"Untitled";
+  const durationValue=analysis?.duration||audioDuration||0;
+  const formatDuration=(seconds:number)=>`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,"0")}`;
+  const targetForApi=(value:string)=>value.toLowerCase().replace(" ","-");
+
+  async function runTranscription(nextFile:File,nextTarget="Auto"){
+    setError("");
+    setStage("processing");
+    setStatus("queued");
+    try{
+      const result=await transcribeAudio(nextFile,{targetInstrument:targetForApi(nextTarget),onStatus:setStatus});
+      if(result.mode!=="real"||!result.musicXml||!result.noteEvents?.length){
+        throw new Error("服务器没有返回可验证的音符事件和 MusicXML。系统不会显示替代音符。");
+      }
+      if(!result.analysis)throw new Error("服务器没有返回与音符事件对应的音乐分析。");
+      setScore(result);
+      setStage("results");
+    }catch(reason){
+      setScore(null);
+      setError(reason instanceof Error?reason.message:"完整扒谱服务未完成任务。");
+      setStage("upload");
+    }
+  }
+
+  function chooseFile(nextFile?:File){
+    if(!nextFile)return;
+    setFile(nextFile);
+    if(audioUrlRef.current)URL.revokeObjectURL(audioUrlRef.current);
+    const nextUrl=URL.createObjectURL(nextFile);
+    audioUrlRef.current=nextUrl;
+    setAudioUrl(nextUrl);
+    setPlayhead(0);
+    setAudioDuration(0);
+    void runTranscription(nextFile,"Auto");
+  }
+
+  async function rerunForTarget(){
+    if(file)await runTranscription(file,target);
+  }
+
+  function togglePlayback(){
+    const audio=player.current;
+    if(!audio)return;
+    if(audio.paused)void audio.play();else audio.pause();
+  }
+
+  if(stage==="upload")return <main className="ai-page"><section className="ai-hero"><span className="ai-label"><i/> BANDPROJECT AUDIO LAB</span><h1>真实音频，<br/>真实乐谱。</h1><p>上传后由服务器完成音符识别、节拍分析与 MusicXML 制谱。没有可靠证据的项目会留空，不会用预设数据补齐。</p></section><section className="audio-upload"><button onClick={()=>input.current?.click()}><input ref={input} type="file" accept="audio/*" onChange={event=>chooseFile(event.target.files?.[0])}/><span><Icon name="music" size={24}/></span><h3>上传音频开始完整扒谱</h3><p>MP3、WAV、M4A、OGG、FLAC · 最大 50 MB</p></button>{error&&<div className="analysis-error">{error}</div>}<div className="privacy"><Icon name="check" size={15}/>音频仅发送到私人扒谱服务，不会发布到网站乐谱库。</div></section></main>;
+
+  if(stage==="processing")return <main className="analyzing"><div className="analysis-orbit"><span><Icon name="music" size={24}/></span><i/></div><span className="kicker">REAL SERVER TRANSCRIPTION</span><h1>{status==="queued"?"任务正在排队。":"正在识别真实音符。"}</h1><p>{status==="queued"?"免费处理实例可能需要先唤醒，请保持页面打开。":"Basic Pitch 正在生成音符事件，随后量化并导出 MusicXML。"}</p></main>;
+
+  if(!score||!analysis||!file)return null;
+  if(stage==="score")return <main className="transcription-page"><button className="back" onClick={()=>setStage("results")}><Icon name="back"/> 返回分析</button><div className="transcription-head"><div><span className="kicker">VERIFIED NOTE EVENTS → MUSICXML</span><h1>{title}</h1><p>{analysis.noteCount} 个真实音符事件 · {score.provider}</p></div><button className="primary" onClick={()=>downloadSheet({...sheets[0],title,instrument:target,bpm:analysis.bpm||0,musicXml:score.musicXml})}><Icon name="download"/> 导出 MusicXML</button></div><div className="generated-sheet"><NotationRenderer title={title} musicXml={score.musicXml!}/><div className="provider-status real"><b>服务器真实扒谱</b><span>乐谱仅由模型返回的音符事件生成；请在正式演奏前人工复核。</span></div></div></main>;
+
+  const tempoKnown=Boolean(analysis.bpm&&analysis.tempoConfidence>0);
+  const keyKnown=Boolean(analysis.key&&analysis.mode&&analysis.keyConfidence>0);
+  const meter=analysis.timeSignature?`${analysis.timeSignature[0]}/${analysis.timeSignature[1]}`:null;
+  return <main className="results-page"><div className="result-top"><div><span className="ai-label"><i/> SERVER TRANSCRIPTION COMPLETE</span><h1>{title}</h1><p>{formatDuration(durationValue)} · {analysis.noteCount} 个可验证音符事件</p></div><div className="result-actions"><button className="secondary" onClick={()=>setStage("upload")}>分析另一首</button><button className="primary" onClick={()=>setStage("score")}>查看真实乐谱</button></div></div><audio ref={player} src={audioUrl} onLoadedMetadata={event=>setAudioDuration(event.currentTarget.duration)} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onEnded={()=>setPlaying(false)} onTimeUpdate={event=>setPlayhead(event.currentTarget.currentTime)}/><div className={`audio-playback ${playing?"playing":""}`}><button className="audio-toggle" type="button" aria-pressed={playing} onClick={togglePlayback}><Icon name={playing?"pause":"play"} size={15}/><span>{playing?"暂停":"播放"}</span></button><input className="audio-scrubber" aria-label="Audio progress" type="range" min="0" max={durationValue||1} step="0.01" value={Math.min(playhead,durationValue||1)} onChange={event=>{const value=Number(event.target.value);setPlayhead(value);if(player.current)player.current.currentTime=value}}/></div><div className="timestamp"><span>{formatDuration(playhead)}</span><span>{formatDuration(durationValue)}</span></div><div className="analysis-grid"><section className="overview-card"><div className="card-label">VERIFIED OVERVIEW <span>{analysis.provider}</span></div><div className="metrics"><div><span>Tempo</span><b>{tempoKnown?analysis.bpm:"—"} {tempoKnown&&<small>BPM</small>}</b><em>{tempoKnown?`${analysis.tempoConfidence}% confidence`:"未可靠检测"}</em></div><div><span>Key</span><b>{keyKnown?analysis.key:"—"} {keyKnown&&<small>{analysis.mode}</small>}</b><em>{keyKnown?`${analysis.keyConfidence}% confidence`:"未可靠检测"}</em></div><div><span>Time</span><b>{meter||"—"}</b><em>{meter?"来自节拍网格":"未检测，不作预设"}</em></div></div></section><section className="instrument-card"><div className="card-label">NOTE EVIDENCE <span>{analysis.noteCount} events</span></div><p className="method-note">所有分析字段均由本次 Basic Pitch 音符事件及服务器节拍证据计算。未识别乐器类别时保持为空。</p></section><section className="chord-card"><div className="card-label">CHORD CANDIDATES <span>{analysis.chordConfidence}% confidence</span></div><div className="chords">{analysis.chords.length?analysis.chords.map((chord,index)=><span key={`${chord}-${index}`}>{chord}</span>):<em>没有足够的和声证据</em>}</div><p>只展示音符事件能支持的三和弦候选，不补全和弦进行。</p></section><section className="structure-card"><div className="card-label">PROCESSING PROVENANCE <span>real</span></div><p className="method-note">{score.pipeline?.transcriber||score.provider}<br/>{score.notation?.quantized?`已量化 · ${score.notation.measureCount||0} 小节`:"保留模型原始时值，未宣称拍号"}</p></section></div>{score.warnings?.length>0&&<div className="analysis-note"><b>处理说明：</b> {score.warnings.join(" ")}</div>}<section className="transcribe-cta"><div><span className="kicker">INSTRUMENT PROFILE</span><h2>按乐器范围重新扒谱。</h2><p>重新运行会使用对应音域与起音阈值，不会修改或补造音符。</p></div><div className="target-picker">{["Auto","Guitar","Bass","Piano","Chords","Lead sheet"].map(item=><button key={item} className={target===item?"active":""} onClick={()=>setTarget(item)}>{item}</button>)}<button className="generate" onClick={()=>void rerunForTarget()}>重新运行 {target}<Icon name="arrow"/></button></div></section></main>;
 }
 
 function Profile({ openSheet, uploads, library, likedIds, savedIds, toggleLike, toggleSave }: { openSheet: (s: Sheet) => void; uploads: Sheet[]; library: Sheet[]; likedIds: number[]; savedIds: number[]; toggleLike: (sheet: Sheet) => void; toggleSave: (sheet: Sheet) => void }) { const [tab,setTab]=useState("Uploads"); const visible=tab==="Uploads"?[...uploads,...sheets.slice(0,4)]:library.filter(sheet=>savedIds.includes(sheet.id)); return <main className="profile-page"><section className="profile-cover"><div className="profile-monogram">MC</div></section><section className="profile-main"><div className="profile-header"><div><h1>Maya Chen</h1><p>@mayaplayskeys · New York, NY</p></div><button className="secondary"><Icon name="edit"/> Edit profile</button></div><p className="bio">Pianist, arranger, and music student. Usually somewhere between jazz harmony and a perfect pop hook.</p><div className="profile-tags"><div><span>PLAYS</span><b>Piano</b><b>Voice</b></div><div><span>LOVES</span><b>Jazz</b><b>R&B</b><b>Indie pop</b></div></div><div className="profile-numbers"><span><b>{24+uploads.length}</b> uploads</span><span><b>8.4k</b> downloads</span><span><b>1.2k</b> followers</span></div><div className="profile-tabs"><button className={tab==="Uploads"?"active":""} onClick={()=>setTab("Uploads")}>Uploaded sheets</button><button className={tab==="Saved"?"active":""} onClick={()=>setTab("Saved")}>My saving <span>{savedIds.length}</span></button></div>{visible.length ? <div className="sheet-grid profile-grid">{visible.map(s=><SheetCard key={s.id} sheet={s} open={()=>openSheet(s)} liked={likedIds.includes(s.id)} saved={savedIds.includes(s.id)} toggleLike={()=>toggleLike(s)} toggleSave={()=>toggleSave(s)}/>)}</div> : <div className="saved-empty"><Icon name="bookmark" size={25}/><h3>Your saving is empty</h3><p>收藏乐谱后会集中显示在这里。</p></div>}</section></main>; }

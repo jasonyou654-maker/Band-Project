@@ -14,7 +14,7 @@ from .refinement import RefinementPolicy, RefinementReport, refine_events
 from .score import CanonicalScore, GridRhythmQuantizer, Music21ScoreExporter, QuantizedNote, RhythmQuantizer, ScoreMeasure
 from .pipeline import TranscriptionPipeline
 from .demucs_adapter import DemucsSourceSeparator
-from .beat_tracking import LibrosaBeatTracker
+from .beat_tracking import EnergyBeatTracker, LibrosaBeatTracker
 from .revisions import ScoreEditOperation, ScoreRevision, apply_score_operations, correction_training_record
 
 __all__ = [
@@ -41,6 +41,7 @@ __all__ = [
     "ScoreMeasure",
     "TranscriptionPipeline",
     "DemucsSourceSeparator",
+    "EnergyBeatTracker",
     "LibrosaBeatTracker",
     "ScoreEditOperation",
     "ScoreRevision",

@@ -67,6 +67,7 @@ class TranscriptionPipeline:
                 **metadata.parameters,
                 "route": route.separation_mode.value,
                 "preferredStem": route.preferred_stem,
+                "durationSeconds": normalized.duration_seconds,
                 "refinement": {"filteredShortEvents": refinement.filtered_short_events, "mergedEvents": refinement.merged_events},
             },
             processing_seconds=round(perf_counter() - started, 4),
@@ -79,6 +80,8 @@ class TranscriptionPipeline:
         if request.strict_rhythm:
             if not self.quantizer or not self.score_exporter or not self.score_artifacts_directory:
                 warnings.append("Strict rhythm was requested, but the score quantizer is not configured; returning the unquantized draft.")
+            elif not beat_grid.beats_seconds and beat_grid.bpm is None:
+                warnings.append("No reliable beat grid was detected; exporting the original Basic Pitch timing without claiming a meter.")
             else:
                 canonical_score = self.quantizer.quantize(refined_events, beat_grid, request.audio.filename, request.target_instrument)
                 exports = self.score_exporter.export(canonical_score, self.score_artifacts_directory)

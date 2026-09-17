@@ -28,9 +28,10 @@ from transcription.audio import FfmpegAudioPreprocessor
 from transcription.basic_pitch_adapter import BasicPitchTranscriber
 from transcription.contracts import AudioAsset, TranscriptionRequest
 from transcription.demucs_adapter import DemucsSourceSeparator
-from transcription.beat_tracking import LibrosaBeatTracker
+from transcription.beat_tracking import EnergyBeatTracker
 from transcription.pipeline import TranscriptionPipeline
 from transcription.score import GridRhythmQuantizer, Music21ScoreExporter
+from transcription.musical_analysis import summarize_transcription
 
 app = FastAPI(title="BandProject Music Processor", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WEB_ORIGINS", "http://localhost:3000,http://localhost:3001").split(","), allow_methods=["POST", "GET"], allow_headers=["*"])
@@ -56,6 +57,7 @@ def health() -> dict:
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
         "sourceSeparation": False,
+        "analysisMode": "basic-pitch-note-evidence-v2",
     }
 
 
@@ -240,7 +242,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
             transcriber=BasicPitchTranscriber(work / "artifacts"),
             separator=separator,
-            beat_tracker=LibrosaBeatTracker(),
+            beat_tracker=EnergyBeatTracker(),
             quantizer=GridRhythmQuantizer(),
             score_exporter=Music21ScoreExporter(),
             score_artifacts_directory=work / "artifacts",
@@ -265,6 +267,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
         payload.update({
             "provider": "Spotify Basic Pitch + music21",
             "mode": "real",
+            "analysis": summarize_transcription(result),
         })
         return payload
 

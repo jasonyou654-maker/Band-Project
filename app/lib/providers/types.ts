@@ -12,6 +12,21 @@ export type MusicProcessingResult = {
   notation?: { quantized?: boolean; measureCount?: number | null };
   stage?: string;
   pipeline?: { transcriber?: string; separator?: string | null; parameters?: Record<string, unknown>; processing_seconds?: number | null } | null;
+  analysis?: {
+    duration?: number | null;
+    bpm?: number | null;
+    tempoConfidence: number;
+    key?: string | null;
+    mode?: "major" | "minor" | null;
+    keyConfidence: number;
+    timeSignature?: [number, number] | null;
+    chords: string[];
+    chordConfidence: number;
+    instruments: { name: string; confidence: number }[];
+    sections: { name: string; start: number; color: string }[];
+    noteCount: number;
+    provider: string;
+  };
 };
 
 export interface OMRProvider {

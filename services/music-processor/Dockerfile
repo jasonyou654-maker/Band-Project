@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 # This service is the public audio-transcription worker.  Audiveris (Java OMR)
 # and Demucs are optional, heavyweight tools; putting them in this free worker
