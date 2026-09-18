@@ -77,6 +77,49 @@ def raw_event_from_basic_pitch(event: Any, source: str = "basic-pitch") -> RawNo
     return RawNoteEvent(float(start), float(end), int(pitch), max(1, min(127, velocity)), confidence=confidence, source=source)
 
 
+def _infer_note_events(audio_path: Path, profile: BasicPitchProfile) -> tuple[Any, tuple[Any, ...]]:
+    """Run Basic Pitch without constructing its intermediate PrettyMIDI.
+
+    Basic Pitch's public ``predict`` function always converts decoded events to
+    PrettyMIDI before returning them. Noisy overlapping events can make that
+    optional conversion fail with a negative delta time even though the raw
+    note events are usable. This project owns the canonical MIDI exporter, so
+    decode the official model output directly and skip that redundant object.
+    """
+
+    try:
+        import numpy as np
+        from basic_pitch.constants import AUDIO_SAMPLE_RATE, FFT_HOP
+        from basic_pitch.inference import run_inference
+        from basic_pitch.note_creation import model_frames_to_time, output_to_notes_polyphonic
+    except ImportError as error:
+        raise RuntimeError("Basic Pitch is not installed in the processing service.") from error
+
+    model_output = run_inference(str(audio_path), _shared_model())
+    minimum_frames = int(np.round(profile.minimum_note_length_ms / 1000 * (AUDIO_SAMPLE_RATE / FFT_HOP)))
+    frame_events = output_to_notes_polyphonic(
+        model_output["note"],
+        model_output["onset"],
+        onset_thresh=profile.onset_threshold,
+        frame_thresh=profile.frame_threshold,
+        infer_onsets=True,
+        min_note_len=minimum_frames,
+        min_freq=profile.minimum_frequency_hz,
+        max_freq=profile.maximum_frequency_hz,
+        melodia_trick=profile.melodia_trick,
+    )
+    times = model_frames_to_time(model_output["contour"].shape[0])
+    events = []
+    for start_frame, end_frame, pitch, amplitude in frame_events:
+        start = max(0.0, float(times[start_frame]))
+        end = float(times[end_frame])
+        # Model window alignment can very occasionally create an invalid event
+        # at a chunk boundary. Drop only that event instead of aborting the job.
+        if end > start:
+            events.append((start, end, int(pitch), float(amplitude)))
+    return model_output, tuple(events)
+
+
 def fuse_transcription_passes(
     enhanced_events: tuple[RawNoteEvent, ...],
     reference_events: tuple[RawNoteEvent, ...],
@@ -160,27 +203,13 @@ class BasicPitchTranscriber:
 
     def transcribe(self, audio: NormalizedAudio, target: TargetInstrument) -> TranscriberOutput:
         try:
-            from basic_pitch.inference import predict
-        except ImportError as error:
-            raise RuntimeError("Basic Pitch is not installed in the processing service.") from error
-        try:
             basic_pitch_version = version("basic-pitch")
         except PackageNotFoundError:
             basic_pitch_version = None
 
         profile = PROFILES[target]
         started = perf_counter()
-        model_output, _, enhanced_raw_events = predict(
-            str(audio.model_input_path or audio.path),
-            model_or_model_path=_shared_model(),
-            onset_threshold=profile.onset_threshold,
-            frame_threshold=profile.frame_threshold,
-            minimum_note_length=profile.minimum_note_length_ms,
-            minimum_frequency=profile.minimum_frequency_hz,
-            maximum_frequency=profile.maximum_frequency_hz,
-            multiple_pitch_bends=profile.multiple_pitch_bends,
-            melodia_trick=profile.melodia_trick,
-        )
+        model_output, enhanced_raw_events = _infer_note_events(audio.model_input_path or audio.path, profile)
         enhanced_events = tuple(raw_event_from_basic_pitch(event, "basic-pitch-enhanced") for event in enhanced_raw_events)
         reference_events: tuple[RawNoteEvent, ...] = ()
         dual_pass_used = bool(audio.model_input_path and audio.model_input_path != audio.path)
@@ -190,17 +219,7 @@ class BasicPitchTranscriber:
             # memory-constrained workers; the event list and MIDI stay intact.
             if not self.retain_raw_output:
                 model_output = None
-            _, _, reference_raw_events = predict(
-                str(audio.path),
-                model_or_model_path=_shared_model(),
-                onset_threshold=profile.onset_threshold,
-                frame_threshold=profile.frame_threshold,
-                minimum_note_length=profile.minimum_note_length_ms,
-                minimum_frequency=profile.minimum_frequency_hz,
-                maximum_frequency=profile.maximum_frequency_hz,
-                multiple_pitch_bends=profile.multiple_pitch_bends,
-                melodia_trick=profile.melodia_trick,
-            )
+            _, reference_raw_events = _infer_note_events(audio.path, profile)
             reference_events = tuple(raw_event_from_basic_pitch(event, "basic-pitch-reference") for event in reference_raw_events)
             selected_events = fuse_transcription_passes(enhanced_events, reference_events, profile)
         else:

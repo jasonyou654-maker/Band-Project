@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 import subprocess
 import tempfile
-from types import ModuleType
 import unittest
 from unittest.mock import patch
 
@@ -113,25 +112,14 @@ class TranscriptionContractTests(unittest.TestCase):
         self.assertEqual(fused[0].source, "basic-pitch-reference-only")
 
     def test_basic_pitch_does_not_write_noncanonical_intermediate_midi(self):
-        package = ModuleType("basic_pitch")
-        package.__path__ = []  # type: ignore[attr-defined]
-        inference = ModuleType("basic_pitch.inference")
-
-        class UnsafeMidi:
-            def write(self, _path):
-                raise AssertionError("Intermediate model MIDI must not be written")
-
-        def predict(*_args, **_kwargs):
-            return {}, UnsafeMidi(), [(0.1, 0.6, 60, 0.8)]
-
-        inference.predict = predict  # type: ignore[attr-defined]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "source.wav"
             source.write_bytes(b"wav")
             audio = NormalizedAudio(source, 1.0, 22050, 1)
-            with patch.dict(sys.modules, {"basic_pitch": package, "basic_pitch.inference": inference}), patch(
-                "transcription.basic_pitch_adapter._shared_model", return_value=None
+            with patch(
+                "transcription.basic_pitch_adapter._infer_note_events",
+                return_value=({}, ((0.1, 0.6, 60, 0.8),)),
             ):
                 output = BasicPitchTranscriber(root / "artifacts").transcribe(audio, "auto")
         self.assertIsNone(output.midi_path)
