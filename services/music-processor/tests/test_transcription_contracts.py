@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import subprocess
 import tempfile
+from types import ModuleType
 import unittest
 from unittest.mock import patch
 
@@ -21,7 +22,7 @@ from transcription.contracts import (  # noqa: E402
     TranscriptionResult,
 )
 from transcription.routing import SeparationMode, TargetRouter  # noqa: E402
-from transcription.basic_pitch_adapter import PROFILES, fuse_transcription_passes, raw_event_from_basic_pitch  # noqa: E402
+from transcription.basic_pitch_adapter import BasicPitchTranscriber, PROFILES, fuse_transcription_passes, raw_event_from_basic_pitch  # noqa: E402
 from transcription.refinement import RefinementPolicy, refine_events  # noqa: E402
 from transcription.adapters import TranscriberOutput  # noqa: E402
 from transcription.audio import FfmpegAudioPreprocessor, NormalizedAudio, PassthroughAudioPreprocessor  # noqa: E402
@@ -110,6 +111,31 @@ class TranscriptionContractTests(unittest.TestCase):
         fused = fuse_transcription_passes((), reference, PROFILES["auto"])
         self.assertEqual(len(fused), 1)
         self.assertEqual(fused[0].source, "basic-pitch-reference-only")
+
+    def test_basic_pitch_does_not_write_noncanonical_intermediate_midi(self):
+        package = ModuleType("basic_pitch")
+        package.__path__ = []  # type: ignore[attr-defined]
+        inference = ModuleType("basic_pitch.inference")
+
+        class UnsafeMidi:
+            def write(self, _path):
+                raise AssertionError("Intermediate model MIDI must not be written")
+
+        def predict(*_args, **_kwargs):
+            return {}, UnsafeMidi(), [(0.1, 0.6, 60, 0.8)]
+
+        inference.predict = predict  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.wav"
+            source.write_bytes(b"wav")
+            audio = NormalizedAudio(source, 1.0, 22050, 1)
+            with patch.dict(sys.modules, {"basic_pitch": package, "basic_pitch.inference": inference}), patch(
+                "transcription.basic_pitch_adapter._shared_model", return_value=None
+            ):
+                output = BasicPitchTranscriber(root / "artifacts").transcribe(audio, "auto")
+        self.assertIsNone(output.midi_path)
+        self.assertEqual(output.raw_events[0].midi_pitch, 60)
 
     def test_refinement_merges_same_pitch_without_retrigger_evidence(self):
         events = (
