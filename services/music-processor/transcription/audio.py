@@ -112,7 +112,10 @@ class FfmpegAudioPreprocessor:
             check=False,
         )
         if model_render.returncode != 0 or not model_input_path.exists():
-            raise RuntimeError(f"ffmpeg could not prepare the noise-reduced model input: {(model_render.stderr or model_render.stdout)[-500:]}")
+            # Audio decoding succeeded, so an unavailable optional filter must
+            # not discard the whole transcription. Basic Pitch can safely use
+            # the normalized master as a single-pass fallback.
+            model_input_path = None
         return NormalizedAudio(
             path=output_path,
             duration_seconds=duration,

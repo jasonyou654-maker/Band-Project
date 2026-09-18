@@ -21,7 +21,7 @@ from transcription.contracts import (  # noqa: E402
     TranscriptionResult,
 )
 from transcription.routing import SeparationMode, TargetRouter  # noqa: E402
-from transcription.basic_pitch_adapter import PROFILES, raw_event_from_basic_pitch  # noqa: E402
+from transcription.basic_pitch_adapter import PROFILES, fuse_transcription_passes, raw_event_from_basic_pitch  # noqa: E402
 from transcription.refinement import RefinementPolicy, refine_events  # noqa: E402
 from transcription.adapters import TranscriberOutput  # noqa: E402
 from transcription.audio import FfmpegAudioPreprocessor, NormalizedAudio, PassthroughAudioPreprocessor  # noqa: E402
@@ -90,6 +90,26 @@ class TranscriptionContractTests(unittest.TestCase):
         event = raw_event_from_basic_pitch((0.1, 0.5, 60, 0.75))
         self.assertEqual(event.velocity, 95)
         self.assertEqual(event.confidence, 0.75)
+
+    def test_dual_pass_keeps_agreed_weak_note_and_fuses_timing(self):
+        enhanced = (RawNoteEvent(1.00, 1.42, 64, 80, confidence=0.38),)
+        reference = (RawNoteEvent(1.05, 1.48, 64, 86, confidence=0.41),)
+        fused = fuse_transcription_passes(enhanced, reference, PROFILES["auto"])
+        self.assertEqual(len(fused), 1)
+        self.assertEqual(fused[0].midi_pitch, 64)
+        self.assertEqual(fused[0].source, "basic-pitch-dual-pass")
+        self.assertGreater(fused[0].confidence, 0.41)
+
+    def test_dual_pass_rejects_short_single_pass_noise(self):
+        enhanced = (RawNoteEvent(1.00, 1.05, 69, 40, confidence=0.72),)
+        reference = ()
+        self.assertEqual(fuse_transcription_passes(enhanced, reference, PROFILES["auto"]), ())
+
+    def test_dual_pass_rescues_strong_reference_only_note(self):
+        reference = (RawNoteEvent(2.00, 2.40, 55, 100, confidence=0.78),)
+        fused = fuse_transcription_passes((), reference, PROFILES["auto"])
+        self.assertEqual(len(fused), 1)
+        self.assertEqual(fused[0].source, "basic-pitch-reference-only")
 
     def test_refinement_merges_same_pitch_without_retrigger_evidence(self):
         events = (
@@ -195,6 +215,32 @@ class TranscriptionContractTests(unittest.TestCase):
             self.assertTrue(normalized.model_input_path.exists())
             self.assertIn("afftdn", " ".join(commands[-1]))
             self.assertIn("dynaudnorm", " ".join(commands[-1]))
+
+    def test_ffmpeg_preprocessor_falls_back_when_optional_filters_fail(self):
+        request = TranscriptionRequest(
+            request_id="request-filter-fallback",
+            audio=AudioAsset(filename="take.wav", mime_type="audio/wav", byte_size=10),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.wav"
+            source.write_bytes(b"source")
+            render_count = 0
+
+            def runner(command, **_kwargs):
+                nonlocal render_count
+                if command[0] == "ffprobe":
+                    return subprocess.CompletedProcess(command, 0, '{"streams":[{"sample_rate":"44100","channels":1}],"format":{"duration":"2"}}', "")
+                render_count += 1
+                if render_count == 1:
+                    Path(command[-1]).write_bytes(b"wav")
+                    return subprocess.CompletedProcess(command, 0, "", "")
+                return subprocess.CompletedProcess(command, 1, "", "filter unavailable")
+
+            with patch("transcription.audio.shutil.which", return_value="/usr/bin/tool"):
+                normalized = FfmpegAudioPreprocessor(root / "normalized", command_runner=runner).normalize(request, source)
+            self.assertTrue(normalized.path.exists())
+            self.assertIsNone(normalized.model_input_path)
 
     def test_demucs_prefers_requested_bass_stem(self):
         with tempfile.TemporaryDirectory() as directory:
