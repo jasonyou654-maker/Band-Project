@@ -170,7 +170,7 @@ class BasicPitchTranscriber:
 
         profile = PROFILES[target]
         started = perf_counter()
-        model_output, midi_data, enhanced_raw_events = predict(
+        model_output, _, enhanced_raw_events = predict(
             str(audio.model_input_path or audio.path),
             model_or_model_path=_shared_model(),
             onset_threshold=profile.onset_threshold,
@@ -206,10 +206,7 @@ class BasicPitchTranscriber:
         else:
             selected_events = enhanced_events
         artifact_directory = self._artifact_directory(audio.path)
-        midi_path = artifact_directory / "basic-pitch.mid" if artifact_directory else None
         raw_output_path = artifact_directory / "basic-pitch-raw.npz" if artifact_directory and self.retain_raw_output else None
-        if midi_path:
-            midi_data.write(str(midi_path))
         if raw_output_path:
             self._save_raw_output(raw_output_path, model_output)
         parameters = asdict(profile)
@@ -224,7 +221,11 @@ class BasicPitchTranscriber:
             provider=self.provider,
             version=basic_pitch_version,
             parameters=parameters,
-            midi_path=midi_path,
+            # The pipeline exports one canonical MIDI from the fused/refined
+            # event timeline. Writing Basic Pitch's intermediate MIDI here is
+            # redundant and can fail on noisy overlapping events with a
+            # negative delta time before the canonical exporter gets a chance.
+            midi_path=None,
             raw_output_path=raw_output_path,
             warnings=(
                 "Basic Pitch used dual-pass agreement between noise-reduced and normalized audio."
