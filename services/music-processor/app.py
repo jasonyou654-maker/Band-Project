@@ -252,7 +252,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
         except RuntimeError as error:
             raise HTTPException(503, str(error)) from error
         except Exception as error:
-            raise HTTPException(422, f"Basic Pitch could not transcribe this audio: {error}") from error
+            raise HTTPException(422, f"The transcription pipeline could not process this audio: {error}") from error
         if not result.refined_events:
             raise HTTPException(422, "No reliable note events were detected in this audio; no score was generated.")
         if result.midi_path is None or result.musicxml is None:

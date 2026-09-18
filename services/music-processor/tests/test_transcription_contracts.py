@@ -288,6 +288,17 @@ class TranscriptionContractTests(unittest.TestCase):
         self.assertEqual(note.start_beat, 1 / 2)
         self.assertEqual(note.duration_beats, 1)
 
+    def test_grid_quantizer_clamps_pickup_before_first_detected_beat(self):
+        score = GridRhythmQuantizer(subdivisions_per_beat=4).quantize(
+            (RawNoteEvent(0.1, 0.7, 60, confidence=0.8),),
+            BeatGrid(bpm=120, beats_seconds=(0.5, 1.0, 1.5), time_signature=(4, 4)),
+            "Pickup",
+            "piano",
+        )
+        note = score.measures[0].notes[0]
+        self.assertEqual(note.start_beat, 0)
+        self.assertGreater(note.duration_beats, 0)
+
     def test_grid_quantizer_uses_free_rhythm_without_pulse_evidence(self):
         score = GridRhythmQuantizer().quantize(
             (RawNoteEvent(0.123, 0.789, 64, confidence=0.8),),

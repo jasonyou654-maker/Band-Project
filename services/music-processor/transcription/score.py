@@ -77,8 +77,14 @@ class GridRhythmQuantizer(RhythmQuantizer):
         measures: dict[int, list[QuantizedNote]] = {}
         for event_index, event in enumerate(events):
             if has_pulse:
-                start = self._round_to_grid(self._seconds_to_beats(event.start_seconds, beat_grid))
-                end = self._round_to_grid(self._seconds_to_beats(event.end_seconds, beat_grid))
+                # A detected beat grid can legitimately begin after the first
+                # audible note (pickup/anacrusis). MusicXML can represent that
+                # offset, but a negative stream offset becomes an invalid MIDI
+                # delta. Anchor pre-grid notes at zero while retaining duration.
+                raw_start = self._seconds_to_beats(event.start_seconds, beat_grid)
+                raw_end = self._seconds_to_beats(event.end_seconds, beat_grid)
+                start = max(Fraction(0), self._round_to_grid(raw_start))
+                end = max(start, self._round_to_grid(raw_end))
                 duration = max(Fraction(1, self.subdivisions_per_beat), end - start)
             else:
                 # Preserve relative model timing without inventing a tempo. In
