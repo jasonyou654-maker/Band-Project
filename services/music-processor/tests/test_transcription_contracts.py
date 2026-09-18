@@ -176,8 +176,10 @@ class TranscriptionContractTests(unittest.TestCase):
             root = Path(directory)
             source = root / "source.m4a"
             source.write_bytes(b"source")
+            commands = []
 
             def runner(command, **_kwargs):
+                commands.append(command)
                 if command[0] == "ffprobe":
                     return subprocess.CompletedProcess(command, 0, '{"streams":[{"sample_rate":"44100","channels":2}],"format":{"duration":"1.25"}}', "")
                 Path(command[-1]).write_bytes(b"wav")
@@ -189,6 +191,10 @@ class TranscriptionContractTests(unittest.TestCase):
             self.assertEqual(normalized.sample_rate_hz, 44100)
             self.assertEqual(normalized.channels, 2)
             self.assertEqual(normalized.duration_seconds, 1.25)
+            self.assertIsNotNone(normalized.model_input_path)
+            self.assertTrue(normalized.model_input_path.exists())
+            self.assertIn("afftdn", " ".join(commands[-1]))
+            self.assertIn("dynaudnorm", " ".join(commands[-1]))
 
     def test_demucs_prefers_requested_bass_stem(self):
         with tempfile.TemporaryDirectory() as directory:

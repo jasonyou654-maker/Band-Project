@@ -96,8 +96,11 @@ class BasicPitchTranscriber:
 
         profile = PROFILES[target]
         started = perf_counter()
+        # Use the preprocessor's model-only clarity copy when available.  This
+        # leaves the stereo master intact for all other pipeline stages.
+        inference_path = audio.model_input_path or audio.path
         model_output, midi_data, raw_events = predict(
-            str(audio.path),
+            str(inference_path),
             model_or_model_path=_shared_model(),
             onset_threshold=profile.onset_threshold,
             frame_threshold=profile.frame_threshold,
@@ -116,6 +119,7 @@ class BasicPitchTranscriber:
             self._save_raw_output(raw_output_path, model_output)
         parameters = asdict(profile)
         parameters["targetInstrument"] = target
+        parameters["modelInput"] = "noise-reduced-mono" if audio.model_input_path else "source-normalized"
         parameters["processingSeconds"] = round(perf_counter() - started, 4)
         return TranscriberOutput(
             raw_events=tuple(raw_event_from_basic_pitch(event) for event in raw_events),

@@ -9,6 +9,8 @@ from .contracts import TranscriptionResult
 PITCH_NAMES = ("C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B")
 MAJOR_PROFILE = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
 MINOR_PROFILE = (6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17)
+MINIMUM_KEY_CONFIDENCE = 8
+MINIMUM_CHORD_CONFIDENCE = 12
 
 
 def summarize_transcription(result: TranscriptionResult) -> dict:
@@ -56,7 +58,7 @@ def estimate_key(events) -> dict:
     candidates.sort(reverse=True)
     best, runner_up = candidates[0], candidates[1]
     confidence = max(0, min(100, round((best[0] - runner_up[0]) / max(abs(best[0]), 1e-9) * 100)))
-    if confidence < 2:
+    if confidence < MINIMUM_KEY_CONFIDENCE:
         return {"key": None, "mode": None, "confidence": confidence}
     return {"key": PITCH_NAMES[best[1]], "mode": best[2], "confidence": confidence}
 
@@ -87,10 +89,15 @@ def estimate_chords(events, segment_seconds: float = 4.0) -> dict:
         candidates.sort(reverse=True)
         best, runner_up = candidates[0], candidates[1]
         margin = max(0.0, (best[0] - runner_up[0]) / max(best[0], 1e-9))
-        if margin < 0.08:
+        chord_energy = best[0]
+        total_energy = sum(chroma)
+        coverage = chord_energy / max(total_energy, 1e-9)
+        if margin < MINIMUM_CHORD_CONFIDENCE / 100 or coverage < 0.58:
             continue
         if not labels or labels[-1] != best[1]:
             labels.append(best[1])
         margins.append(margin)
     confidence = round(sum(margins) / len(margins) * 100) if margins else 0
+    if confidence < MINIMUM_CHORD_CONFIDENCE:
+        return {"labels": [], "confidence": confidence}
     return {"labels": labels, "confidence": confidence}

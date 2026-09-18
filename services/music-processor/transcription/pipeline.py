@@ -59,7 +59,11 @@ class TranscriptionPipeline:
 
         output = self.transcriber.transcribe(primary_audio, request.target_instrument)
         refined_events, refinement = refine_events(output.raw_events, self.refinement_policy)
-        beat_grid = self.beat_tracker.track(normalized) if self.beat_tracker else BeatGrid(bpm=request.requested_bpm)
+        if self.beat_tracker:
+            event_tracker = getattr(self.beat_tracker, "track_with_events", None)
+            beat_grid = event_tracker(normalized, refined_events) if event_tracker else self.beat_tracker.track(normalized)
+        else:
+            beat_grid = BeatGrid(bpm=request.requested_bpm)
         metadata = pipeline_metadata(output, separator=separation)
         metadata = replace(
             metadata,

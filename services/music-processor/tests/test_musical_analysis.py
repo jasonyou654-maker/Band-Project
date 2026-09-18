@@ -48,7 +48,10 @@ class MusicalAnalysisTests(unittest.TestCase):
             RawNoteEvent(index, index + 0.8, pitch, 100, confidence=0.9, source="test")
             for index, pitch in enumerate((60, 60, 60, 64, 67, 67, 71, 62, 65, 69))
         )
-        self.assertEqual(estimate_key(melodic_events)["key"], "C")
+        # This short, incomplete scale has a plausible C-major interpretation,
+        # but is not sufficiently distinct from its relative/modal candidates.
+        # Do not turn a weak hint from a noisy recording into a published key.
+        self.assertIsNone(estimate_key(melodic_events)["key"])
 
     def test_constant_tone_does_not_claim_a_tempo(self):
         with tempfile.TemporaryDirectory() as directory:
