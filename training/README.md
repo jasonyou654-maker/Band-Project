@@ -21,6 +21,19 @@ python3 -m pip install -r training/requirements-slakh.txt
 python3 training/train_bass_mask.py --epochs 8
 ```
 
+If Zenodo is unavailable, download complete tracks individually from the
+Slakh2100 Redux mirror. The default five-track subset is normally far below
+750 MB and the downloader refuses to cross either its configured limit or 1 GB:
+
+```bash
+python3 training/download_slakh_subset.py
+python3 training/train_bass_mask.py --data training/data/slakh-subset --epochs 8
+```
+
+The trainer holds out the final 20% of tracks and records both training and
+validation loss. A run with only one track is rejected, preventing a misleading
+"trained" checkpoint with no independent validation evidence.
+
 The compact residual-mask model is trained specifically against the summed Bass
 stems. It is a conservative post-Demucs correction model; the original float32
 Demucs stem remains available as the reference signal so training or denoising

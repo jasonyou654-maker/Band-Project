@@ -14,6 +14,7 @@ from typing import Callable
 
 from .adapters import SeparationResult
 from .audio import NormalizedAudio
+from .bass_refiner import BabySlakhBassRefiner
 
 
 class DemucsSourceSeparator:
@@ -25,6 +26,7 @@ class DemucsSourceSeparator:
         self.command = os.getenv("DEMUCS_COMMAND", "demucs")
         self.model = os.getenv("DEMUCS_MODEL", "htdemucs_ft")
         self.ffmpeg_command = os.getenv("FFMPEG_COMMAND", "ffmpeg")
+        self.bass_refiner = BabySlakhBassRefiner.from_environment()
 
     def separate(self, audio: NormalizedAudio, preferred_stem: str | None) -> SeparationResult:
         if not shutil.which(self.command):
@@ -52,7 +54,13 @@ class DemucsSourceSeparator:
         warnings: list[str] = []
         if preferred_stem in {"other", None}:
             warnings.append("The accompaniment stem is auxiliary evidence, not an isolated target instrument.")
-        model_input_path = self._make_model_input(selected, preferred_stem)
+        model_input_path = None
+        if preferred_stem == "bass" and self.bass_refiner:
+            try:
+                model_input_path = self.bass_refiner.refine(audio.path, selected.with_name("bass-babyslakh-analysis.wav"))
+            except RuntimeError as error:
+                warnings.append(f"BabySlakh bass refinement was unavailable: {error}")
+        model_input_path = model_input_path or self._make_model_input(selected, preferred_stem)
         return SeparationResult(
             primary_audio=NormalizedAudio(
                 path=selected,

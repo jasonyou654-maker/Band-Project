@@ -13,15 +13,19 @@ from pathlib import Path
 import random
 
 import torch
-from torch import nn
 from torch.utils.data import DataLoader, Dataset
 import torchaudio
 import yaml
 
+SERVICE_ROOT = Path(__file__).parents[1] / "services" / "music-processor"
+import sys
+sys.path.insert(0, str(SERVICE_ROOT))
+from transcription.bass_refiner import build_bass_mask_model  # noqa: E402
+
 
 class BabySlakhBass(Dataset):
-    def __init__(self, root: Path, seconds: float = 6.0, samples_per_track: int = 12) -> None:
-        self.tracks = sorted(path.parent for path in root.rglob("mix.wav"))
+    def __init__(self, root: Path, seconds: float = 6.0, samples_per_track: int = 12, tracks: list[Path] | None = None) -> None:
+        self.tracks = tracks or sorted({path.parent for pattern in ("mix.wav", "mix.flac") for path in root.rglob(pattern)})
         if not self.tracks:
             raise RuntimeError(f"No BabySlakh mix.wav files found below {root}")
         self.clip_samples = round(seconds * 16000)
@@ -34,13 +38,15 @@ class BabySlakhBass(Dataset):
         track = self.tracks[index % len(self.tracks)]
         metadata = yaml.safe_load((track / "metadata.yaml").read_text())
         bass_ids = [name for name, item in metadata["stems"].items() if item.get("inst_class") == "Bass" and item.get("audio_rendered")]
-        mix, rate = torchaudio.load(track / "mix.wav")
+        mix_path = next(path for path in (track / "mix.wav", track / "mix.flac") if path.exists())
+        mix, rate = torchaudio.load(mix_path)
         if rate != 16000:
             mix = torchaudio.functional.resample(mix, rate, 16000)
         mix = mix.mean(0, keepdim=True)
         bass = torch.zeros_like(mix)
         for stem_id in bass_ids:
-            stem, stem_rate = torchaudio.load(track / "stems" / f"{stem_id}.wav")
+            stem_path = next(path for path in (track / "stems" / f"{stem_id}.wav", track / "stems" / f"{stem_id}.flac") if path.exists())
+            stem, stem_rate = torchaudio.load(stem_path)
             if stem_rate != 16000:
                 stem = torchaudio.functional.resample(stem, stem_rate, 16000)
             bass[..., : stem.shape[-1]] += stem.mean(0, keepdim=True)[..., : bass.shape[-1]]
@@ -49,19 +55,6 @@ class BabySlakhBass(Dataset):
         mix = torch.nn.functional.pad(mix[..., start:start + self.clip_samples], (0, max(0, self.clip_samples - mix[..., start:start + self.clip_samples].shape[-1])))
         bass = torch.nn.functional.pad(bass[..., start:start + self.clip_samples], (0, max(0, self.clip_samples - bass[..., start:start + self.clip_samples].shape[-1])))
         return mix, bass
-
-
-class BassResidualMask(nn.Module):
-    def __init__(self) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(1, 24, 5, padding=2), nn.GELU(),
-            nn.Conv2d(24, 24, 3, padding=1, groups=6), nn.GELU(),
-            nn.Conv2d(24, 1, 1), nn.Sigmoid(),
-        )
-
-    def forward(self, magnitude: torch.Tensor) -> torch.Tensor:
-        return magnitude * self.net(torch.log1p(magnitude))
 
 
 def spectral_loss(prediction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
@@ -79,8 +72,14 @@ def main() -> int:
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
-    loader = DataLoader(BabySlakhBass(args.data), batch_size=args.batch_size, shuffle=True, num_workers=0)
-    model = BassResidualMask().to(device)
+    tracks = sorted({path.parent for pattern in ("mix.wav", "mix.flac") for path in args.data.rglob(pattern)})
+    if len(tracks) < 2:
+        raise RuntimeError("At least two complete Slakh tracks are required for train/validation separation.")
+    validation_tracks = tracks[-max(1, len(tracks) // 5):]
+    training_tracks = tracks[:-len(validation_tracks)]
+    loader = DataLoader(BabySlakhBass(args.data, tracks=training_tracks), batch_size=args.batch_size, shuffle=True, num_workers=0)
+    validation_loader = DataLoader(BabySlakhBass(args.data, samples_per_track=3, tracks=validation_tracks), batch_size=args.batch_size, shuffle=False, num_workers=0)
+    model = build_bass_mask_model(torch).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
     history = []
     window = torch.hann_window(1024, device=device)
@@ -94,11 +93,22 @@ def main() -> int:
             loss = spectral_loss(predicted, bass_stft.abs())
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             running += float(loss.detach())
-        history.append(running / len(loader))
-        print(f"epoch={epoch + 1} loss={history[-1]:.6f}")
+        training_loss = running / len(loader)
+        model.eval()
+        validation_loss = 0.0
+        with torch.inference_mode():
+            for mixture, bass in validation_loader:
+                mixture, bass = mixture.to(device), bass.to(device)
+                mix_stft = torch.stft(mixture[:, 0], 1024, 256, window=window, return_complex=True)
+                bass_stft = torch.stft(bass[:, 0], 1024, 256, window=window, return_complex=True)
+                validation_loss += float(spectral_loss(model(mix_stft.abs().unsqueeze(1)).squeeze(1), bass_stft.abs()))
+        model.train()
+        metrics = {"epoch": epoch + 1, "trainingLoss": training_loss, "validationLoss": validation_loss / len(validation_loader)}
+        history.append(metrics)
+        print(f"epoch={epoch + 1} train={metrics['trainingLoss']:.6f} validation={metrics['validationLoss']:.6f}")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     torch.save({"model": model.state_dict(), "sample_rate": 16000, "n_fft": 1024, "hop_length": 256, "history": history}, args.output)
-    args.output.with_suffix(".json").write_text(json.dumps({"dataset": "BabySlakh v2", "seed": args.seed, "epochs": args.epochs, "loss": history}, indent=2))
+    args.output.with_suffix(".json").write_text(json.dumps({"dataset": "Slakh2100 subset", "seed": args.seed, "epochs": args.epochs, "trainingTracks": [path.name for path in training_tracks], "validationTracks": [path.name for path in validation_tracks], "metrics": history}, indent=2))
     return 0
 
 
