@@ -1,11 +1,7 @@
-"""Slakh-trained full-band four-stem evidence model.
-
-The learned estimates never replace the float32 Demucs stems. They are used as
-an independent analysis pass, so agreement can improve transcription while a
-weak small-data checkpoint cannot destructively alter exported audio.
-"""
+"""Slakh-trained full-band four-stem evidence model."""
 from __future__ import annotations
 
+from math import gcd
 import os
 from pathlib import Path
 
@@ -13,6 +9,7 @@ STEM_NAMES = ("bass", "drums", "vocals", "other")
 
 
 def build_multistem_mask_model(torch):
+    """Keep the training architecture beside inference for checkpoint parity."""
     nn = torch.nn
 
     class MultibandStemMask(nn.Module):
@@ -33,64 +30,112 @@ def build_multistem_mask_model(torch):
 
 
 class SlakhMultistemRefiner:
-    def __init__(self, checkpoint: Path) -> None:
-        self.checkpoint = checkpoint
+    def __init__(self, model_path: Path) -> None:
+        self.model_path = model_path
+        self.checkpoint = model_path  # Backward-compatible inspection attribute.
 
     @classmethod
     def from_environment(cls) -> "SlakhMultistemRefiner | None":
-        value = os.getenv("MULTISTEM_REFINER_CHECKPOINT", "").strip()
-        packaged = Path(__file__).parents[1] / "models" / "multistem-mask.pt"
-        checkpoint = Path(value) if value else packaged
-        return cls(checkpoint) if checkpoint and checkpoint.is_file() else None
+        explicit = os.getenv("MULTISTEM_REFINER_MODEL", "").strip() or os.getenv("MULTISTEM_REFINER_CHECKPOINT", "").strip()
+        models = Path(__file__).parents[1] / "models"
+        candidate = Path(explicit) if explicit else models / "multistem-mask.onnx"
+        if not explicit and not candidate.is_file():
+            candidate = models / "multistem-mask.pt"
+        return cls(candidate) if candidate.is_file() else None
 
-    def separate(self, mixture_path: Path, output_directory: Path) -> dict[str, Path]:
+    @staticmethod
+    def _stft(numpy, signal, n_fft: int, hop_length: int):
+        padding = n_fft // 2
+        mode = "reflect" if signal.shape[0] > padding else "constant"
+        padded = numpy.pad(signal, (padding, padding), mode=mode)
+        frames = numpy.lib.stride_tricks.sliding_window_view(padded, n_fft)[::hop_length]
+        window = numpy.hanning(n_fft + 1)[:-1].astype("float32")
+        return numpy.fft.rfft(frames * window, axis=1).T.astype("complex64"), window
+
+    @staticmethod
+    def _istft(numpy, spectrum, window, hop_length: int, length: int):
+        n_fft = window.shape[0]
+        frames = numpy.fft.irfft(spectrum.T, n=n_fft, axis=1).astype("float32") * window
+        output = numpy.zeros(n_fft + hop_length * (frames.shape[0] - 1), dtype="float32")
+        weights = numpy.zeros_like(output)
+        for index, frame in enumerate(frames):
+            start = index * hop_length
+            output[start:start + n_fft] += frame
+            weights[start:start + n_fft] += window * window
+        output /= numpy.maximum(weights, 1e-8)
+        padding = n_fft // 2
+        return numpy.pad(output[padding:padding + length], (0, max(0, length - (output.shape[0] - padding))))[:length]
+
+    def _separate_onnx(self, waveform, sample_rate: int, n_fft: int, hop_length: int):
         try:
-            import soundfile
-            import torch
-            import torchaudio
+            import numpy
+            import onnxruntime
         except ImportError as error:
-            raise RuntimeError("The Slakh multistem refiner requires torch, torchaudio, and soundfile.") from error
-        state = torch.load(self.checkpoint, map_location="cpu", weights_only=True)
-        sample_rate = int(state.get("sample_rate", 16000))
-        n_fft = int(state.get("n_fft", 1024))
-        hop_length = int(state.get("hop_length", 256))
+            raise RuntimeError("The Slakh ONNX refiner requires numpy and onnxruntime.") from error
+        session = onnxruntime.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
+        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "8")) * sample_rate))
+        overlap = min(sample_rate, chunk_samples // 4)
+        step = chunk_samples - overlap
+        separated = numpy.zeros((len(STEM_NAMES), waveform.shape[0]), dtype="float32")
+        weights = numpy.zeros(waveform.shape[0], dtype="float32")
+        for start in range(0, waveform.shape[0], step):
+            end = min(waveform.shape[0], start + chunk_samples)
+            spectrum, window = self._stft(numpy, waveform[start:end], n_fft, hop_length)
+            magnitude = numpy.abs(spectrum).astype("float32")
+            estimates = session.run(["stems"], {"magnitude": magnitude[None, None]})[0][0]
+            phase = spectrum / numpy.maximum(magnitude, 1e-8)
+            chunk_audio = numpy.stack([
+                self._istft(numpy, estimate * phase, window, hop_length, end - start)
+                for estimate in estimates
+            ])
+            envelope = numpy.ones(end - start, dtype="float32")
+            fade = min(overlap, end - start)
+            if start:
+                envelope[:fade] = numpy.linspace(0, 1, fade, dtype="float32")
+            if end < waveform.shape[0]:
+                envelope[-fade:] = numpy.linspace(1, 0, fade, dtype="float32")
+            separated[:, start:end] += chunk_audio * envelope
+            weights[start:end] += envelope
+        return numpy.clip(separated / numpy.maximum(weights, 1e-6), -1, 1)
+
+    def _separate_torch(self, waveform, sample_rate: int, n_fft: int, hop_length: int):
+        try:
+            import torch
+        except ImportError as error:
+            raise RuntimeError("The Slakh checkpoint refiner requires torch.") from error
+        state = torch.load(self.model_path, map_location="cpu", weights_only=True)
         model = build_multistem_mask_model(torch)
         model.load_state_dict(state["model"])
         model.eval()
-        samples, source_rate = soundfile.read(mixture_path, dtype="float32", always_2d=True)
-        waveform = torch.from_numpy(samples.T.copy()).mean(0, keepdim=True)
-        if source_rate != sample_rate:
-            waveform = torchaudio.functional.resample(waveform, source_rate, sample_rate)
+        signal = torch.from_numpy(waveform.copy())
         window = torch.hann_window(n_fft)
-        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "30")) * sample_rate))
-        overlap = min(sample_rate, chunk_samples // 4)
-        step = chunk_samples - overlap
-        separated = torch.zeros(len(STEM_NAMES), waveform.shape[-1])
-        weights = torch.zeros(waveform.shape[-1])
         with torch.inference_mode():
-            for start in range(0, waveform.shape[-1], step):
-                end = min(waveform.shape[-1], start + chunk_samples)
-                chunk = waveform[0, start:end]
-                spectrum = torch.stft(chunk, n_fft, hop_length, window=window, return_complex=True)
-                estimates = model(spectrum.abs()[None, None])[0]
-                phase = torch.exp(1j * torch.angle(spectrum))
-                chunk_audio = torch.stack([
-                    torch.istft(estimate * phase, n_fft, hop_length, window=window, length=chunk.shape[-1])
-                    for estimate in estimates
-                ])
-                envelope = torch.ones(chunk.shape[-1])
-                fade = min(overlap, chunk.shape[-1])
-                if start:
-                    envelope[:fade] = torch.linspace(0, 1, fade)
-                if end < waveform.shape[-1]:
-                    envelope[-fade:] = torch.linspace(1, 0, fade)
-                separated[:, start:end] += chunk_audio * envelope
-                weights[start:end] += envelope
-        audio = (separated / weights.clamp_min(1e-6)).clamp(-1, 1)
+            spectrum = torch.stft(signal, n_fft, hop_length, window=window, return_complex=True)
+            estimates = model(spectrum.abs()[None, None])[0]
+            phase = torch.exp(1j * torch.angle(spectrum))
+            return torch.stack([
+                torch.istft(estimate * phase, n_fft, hop_length, window=window, length=signal.shape[-1])
+                for estimate in estimates
+            ]).clamp(-1, 1).numpy()
+
+    def separate(self, mixture_path: Path, output_directory: Path) -> dict[str, Path]:
+        try:
+            import numpy
+            import soundfile
+            from scipy.signal import resample_poly
+        except ImportError as error:
+            raise RuntimeError("The Slakh multistem refiner requires numpy, scipy, and soundfile.") from error
+        samples, source_rate = soundfile.read(mixture_path, dtype="float32", always_2d=True)
+        waveform = samples.mean(axis=1)
+        sample_rate = 16000
+        if source_rate != sample_rate:
+            divisor = gcd(source_rate, sample_rate)
+            waveform = resample_poly(waveform, sample_rate // divisor, source_rate // divisor).astype("float32")
+        audio = self._separate_onnx(waveform, sample_rate, 1024, 256) if self.model_path.suffix == ".onnx" else self._separate_torch(waveform, sample_rate, 1024, 256)
         output_directory.mkdir(parents=True, exist_ok=True)
         paths = {}
         for stem, estimate in zip(STEM_NAMES, audio):
             path = output_directory / f"{stem}-slakh-analysis.wav"
-            soundfile.write(path, estimate.numpy(), sample_rate, subtype="FLOAT")
+            soundfile.write(path, numpy.asarray(estimate), sample_rate, subtype="FLOAT")
             paths[stem] = path
         return paths

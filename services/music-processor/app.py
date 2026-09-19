@@ -52,14 +52,18 @@ SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 @app.get("/health")
 def health() -> dict:
+    refiner_available = SlakhMultistemRefiner.from_environment() is not None
+    separation_engine = os.getenv("SEPARATION_ENGINE", "demucs").lower()
+    separator_available = refiner_available if separation_engine == "slakh" else bool(shutil.which(os.getenv("DEMUCS_COMMAND", "demucs")))
     return {
         "status": "ready",
         "revision": os.getenv("RENDER_GIT_COMMIT", "local")[:7],
         "audiveris": bool(shutil.which(AUDIVERIS_COMMAND)),
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
-        "sourceSeparation": os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" and bool(shutil.which(os.getenv("DEMUCS_COMMAND", "demucs"))),
-        "slakhMultistemRefiner": SlakhMultistemRefiner.from_environment() is not None,
+        "sourceSeparation": os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" and separator_available,
+        "separationEngine": separation_engine,
+        "slakhMultistemRefiner": refiner_available,
         "analysisMode": "basic-pitch-note-evidence-v2",
     }
 

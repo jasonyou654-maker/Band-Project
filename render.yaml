@@ -13,3 +13,5 @@ services:
         value: "true"
       - key: DEMUCS_MODEL
         value: htdemucs_ft
+      - key: SEPARATION_ENGINE
+        value: slakh

@@ -26,11 +26,14 @@ class DemucsSourceSeparator:
         self.command_runner = command_runner
         self.command = os.getenv("DEMUCS_COMMAND", "demucs")
         self.model = os.getenv("DEMUCS_MODEL", "htdemucs_ft")
+        self.engine = os.getenv("SEPARATION_ENGINE", "demucs").lower()
         self.ffmpeg_command = os.getenv("FFMPEG_COMMAND", "ffmpeg")
         self.bass_refiner = BabySlakhBassRefiner.from_environment()
         self.multistem_refiner = SlakhMultistemRefiner.from_environment()
 
     def separate(self, audio: NormalizedAudio, preferred_stem: str | None) -> SeparationResult:
+        if self.engine == "slakh":
+            return self._separate_with_slakh(audio, preferred_stem)
         if not shutil.which(self.command):
             raise RuntimeError("Demucs is not installed in the processing service.")
         self.output_directory.mkdir(parents=True, exist_ok=True)
@@ -80,6 +83,28 @@ class DemucsSourceSeparator:
             stems=stem_paths,
             provider=self.provider,
             version=self.model,
+            warnings=tuple(warnings),
+        )
+
+    def _separate_with_slakh(self, audio: NormalizedAudio, preferred_stem: str | None) -> SeparationResult:
+        if not self.multistem_refiner:
+            raise RuntimeError("The packaged Slakh multistem model is unavailable.")
+        stem_paths = self.multistem_refiner.separate(audio.path, self.output_directory / "slakh-analysis")
+        selected = stem_paths.get(preferred_stem or "other", stem_paths["other"])
+        warnings = ["Using the low-memory Slakh four-stem separator; the normalized mix remains independent reference evidence."]
+        if preferred_stem in {"other", None}:
+            warnings.append("The accompaniment stem is auxiliary evidence, not an isolated target instrument.")
+        return SeparationResult(
+            primary_audio=NormalizedAudio(
+                path=selected,
+                duration_seconds=audio.duration_seconds,
+                sample_rate_hz=16000,
+                channels=1,
+                model_input_path=audio.path,
+            ),
+            stems=stem_paths,
+            provider="Slakh full-band four-stem separator",
+            version="multistem-mask-v1",
             warnings=tuple(warnings),
         )
 

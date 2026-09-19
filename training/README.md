@@ -28,6 +28,7 @@ Slakh2100 Redux mirror. The default five-track subset is normally far below
 ```bash
 python3 training/download_slakh_subset.py --endpoint https://hf-mirror.com
 python3 training/train_multistem_mask.py --data training/data/slakh-subset --epochs 8
+python3 training/export_multistem_onnx.py
 ```
 
 The trainer holds out the final 20% of tracks and records both training and

@@ -29,13 +29,15 @@ pipeline stage. The in-memory job registry is suitable for a single worker only;
 production deployment should replace it with a durable queue and object storage
 before accepting long jobs at scale.
 
-The included container installs `requirements-separation.txt` and enables
-Demucs. The processor runs the fine-tuned `htdemucs_ft` model before every
-non-isolated analysis and retains complete float32 vocals, drums, bass, and
-other stems. A packaged Slakh-trained four-stem analysis pass covers the full
-audible range while weighting 0-250 Hz more heavily. The selected Demucs stem
-is never destructively denoised and remains the reference evidence; bass
-filtering preserves content down to 25 Hz.
+The included container installs `requirements-separation.txt` and enables the
+low-memory Slakh ONNX separator. It retains float32 vocals, drums, bass, and
+other stems across the full audible range while weighting 0-250 Hz more
+heavily. Inference runs in overlapping chunks so memory does not grow with the
+uploaded song. The normalized mix remains independent reference evidence.
+
+Workers with more memory can install Demucs and set `SEPARATION_ENGINE=demucs`.
+That path runs the fine-tuned `htdemucs_ft` model and keeps its original float32
+stem as the reference while the Slakh result supplies a second analysis pass.
 
 `DEMUCS_MODEL`, `DEMUCS_SHIFTS`, and `DEMUCS_OVERLAP` can tune the quality/cost
 tradeoff. Production defaults are `htdemucs_ft`, one shift, and 0.5 overlap.
