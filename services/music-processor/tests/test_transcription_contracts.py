@@ -265,7 +265,7 @@ class TranscriptionContractTests(unittest.TestCase):
 
             def runner(command, **_kwargs):
                 stem = output / "htdemucs" / "normalized" / "bass.wav"
-                stem.parent.mkdir(parents=True)
+                stem.parent.mkdir(parents=True, exist_ok=True)
                 stem.write_bytes(b"bass")
                 return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -273,7 +273,33 @@ class TranscriptionContractTests(unittest.TestCase):
             with patch("transcription.demucs_adapter.shutil.which", return_value="/usr/bin/demucs"):
                 separated = DemucsSourceSeparator(output, command_runner=runner).separate(audio, "bass")
             self.assertEqual(separated.primary_audio.path.name, "bass.wav")
-            self.assertEqual(separated.provider, "Demucs htdemucs")
+            self.assertEqual(separated.provider, "Demucs Hybrid Transformer (full multitrack)")
+
+    def test_demucs_renders_all_float_stems_and_preserves_bass_fundamentals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "output"
+            source = root / "normalized.wav"
+            source.write_bytes(b"wav")
+            commands = []
+
+            def runner(command, **_kwargs):
+                commands.append(command)
+                if command[0] == "demucs":
+                    stem = output / "htdemucs_ft" / "normalized" / "bass.wav"
+                    stem.parent.mkdir(parents=True)
+                    stem.write_bytes(b"bass")
+                else:
+                    Path(command[-1]).write_bytes(b"clean bass")
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch("transcription.demucs_adapter.shutil.which", return_value="/usr/bin/tool"):
+                separated = DemucsSourceSeparator(output, command_runner=runner).separate(NormalizedAudio(source, 1.0, 44100, 2), "bass")
+            demucs_command, ffmpeg_command = commands
+            self.assertIn("--float32", demucs_command)
+            self.assertNotIn("--two-stems", demucs_command)
+            self.assertIn("highpass=f=25", " ".join(ffmpeg_command))
+            self.assertEqual(separated.primary_audio.model_input_path.name, "bass-analysis.wav")
 
     def test_grid_quantizer_uses_beat_grid_without_changing_pitch(self):
         event = RawNoteEvent(0.24, 0.76, 64, confidence=0.8)

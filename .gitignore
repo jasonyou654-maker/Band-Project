@@ -25,6 +25,8 @@
 *.pem
 __pycache__/
 /evaluation/reports/*.json
+/training/data/
+/training/checkpoints/
 
 # debug
 npm-debug.log*

@@ -57,7 +57,7 @@ def health() -> dict:
         "audiveris": bool(shutil.which(AUDIVERIS_COMMAND)),
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
-        "sourceSeparation": False,
+        "sourceSeparation": os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" and bool(shutil.which(os.getenv("DEMUCS_COMMAND", "demucs"))),
         "analysisMode": "basic-pitch-note-evidence-v2",
     }
 

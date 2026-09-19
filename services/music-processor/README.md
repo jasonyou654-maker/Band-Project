@@ -29,11 +29,17 @@ pipeline stage. The in-memory job registry is suitable for a single worker only;
 production deployment should replace it with a durable queue and object storage
 before accepting long jobs at scale.
 
-Set `ENABLE_SOURCE_SEPARATION=true` only on workers provisioned for Demucs. The
-processor keeps a normalized 44.1 kHz stereo WAV for separation, while Basic
-Pitch performs its own mono analysis. Send `source_type=mix` and optionally
-`strict_rhythm=true` in a transcription form request to enable mix-aware routing
-and canonical-score quantization.
+Install `requirements-separation.txt` and set `ENABLE_SOURCE_SEPARATION=true`
+on a worker provisioned for Demucs. The processor runs the fine-tuned
+`htdemucs_ft` model before every non-isolated analysis and retains complete
+float32 vocals, drums, bass, and other stems. The selected stem is never
+destructively denoised: Basic Pitch compares the untouched stem with a gently
+filtered analysis copy. Bass filtering preserves content down to 25 Hz.
+
+`DEMUCS_MODEL`, `DEMUCS_SHIFTS`, and `DEMUCS_OVERLAP` can tune the quality/cost
+tradeoff. Production defaults are `htdemucs_ft`, one shift, and 0.5 overlap.
+Send `source_type=mix` and optionally `strict_rhythm=true` in a transcription
+form request to enable mix-aware routing and canonical-score quantization.
 
 The included Dockerfile installs the official Linux Audiveris 5.10.2 release,
 its bundled Java runtime, Tesseract OCR, Basic Pitch, and music21. The

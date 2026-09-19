@@ -34,5 +34,4 @@ class TargetRouter:
             return TargetRoute(request.target_instrument, SeparationMode.PREFERRED_STEM, stem, "Use the target stem as primary evidence and the mix for verification.")
         if request.target_instrument in {"piano", "guitar", "chords", "lead-sheet"}:
             return TargetRoute(request.target_instrument, SeparationMode.AUXILIARY_STEM, "other", "Do not treat generic separation as an isolated piano or guitar track.")
-        return TargetRoute(request.target_instrument, SeparationMode.BYPASS, None, "No reliable target-specific stem is available.")
-
+        return TargetRoute(request.target_instrument, SeparationMode.AUXILIARY_STEM, "other", "Separate every non-isolated mix before analysis; use accompaniment as auxiliary evidence for automatic routing.")

@@ -49,7 +49,7 @@ class TranscriptionPipeline:
         primary_audio = normalized
         warnings = [route.rationale]
 
-        if route.separation_mode != SeparationMode.BYPASS:
+        if request.audio.source_type != "isolated":
             if self.separator is None:
                 warnings.append("No source separator is configured; transcribing the normalized mix directly.")
             else:
