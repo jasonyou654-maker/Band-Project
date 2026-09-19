@@ -28,6 +28,7 @@ from transcription.audio import FfmpegAudioPreprocessor
 from transcription.basic_pitch_adapter import BasicPitchTranscriber
 from transcription.contracts import AudioAsset, TranscriptionRequest
 from transcription.demucs_adapter import DemucsSourceSeparator
+from transcription.multistem_refiner import SlakhMultistemRefiner
 from transcription.beat_tracking import EnergyBeatTracker
 from transcription.pipeline import TranscriptionPipeline
 from transcription.score import GridRhythmQuantizer, Music21ScoreExporter
@@ -58,6 +59,7 @@ def health() -> dict:
         "basicPitch": module_available("basic_pitch"),
         "music21": module_available("music21"),
         "sourceSeparation": os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" and bool(shutil.which(os.getenv("DEMUCS_COMMAND", "demucs"))),
+        "slakhMultistemRefiner": SlakhMultistemRefiner.from_environment() is not None,
         "analysisMode": "basic-pitch-note-evidence-v2",
     }
 

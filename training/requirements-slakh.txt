@@ -1,3 +1,5 @@
 torch>=2.3,<3
 torchaudio>=2.3,<3
+numpy>=2,<3
+soundfile>=0.12,<1
 PyYAML>=6,<7

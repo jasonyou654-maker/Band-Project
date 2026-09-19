@@ -9,7 +9,7 @@ This folder defines the data contract to use when authorized audio and musician-
 
 Each reference must be authoritative MIDI or MusicXML for the same audio excerpt. Use `evaluation` until a training run is approved; record `consentedForTraining` per asset.
 
-## BabySlakh bass refinement
+## Slakh full-band refinement
 
 BabySlakh v2 is the official 20-track prototype subset of Slakh2100. Its archive
 is 882.8 MB, so it stays below the requested 1 GB download budget. The downloader
@@ -26,15 +26,18 @@ Slakh2100 Redux mirror. The default five-track subset is normally far below
 750 MB and the downloader refuses to cross either its configured limit or 1 GB:
 
 ```bash
-python3 training/download_slakh_subset.py
-python3 training/train_bass_mask.py --data training/data/slakh-subset --epochs 8
+python3 training/download_slakh_subset.py --endpoint https://hf-mirror.com
+python3 training/train_multistem_mask.py --data training/data/slakh-subset --epochs 8
 ```
 
 The trainer holds out the final 20% of tracks and records both training and
 validation loss. A run with only one track is rejected, preventing a misleading
 "trained" checkpoint with no independent validation evidence.
 
-The compact residual-mask model is trained specifically against the summed Bass
-stems. It is a conservative post-Demucs correction model; the original float32
-Demucs stem remains available as the reference signal so training or denoising
-never destructively replaces source audio.
+The default subset mode downloads the mixture, metadata, and every rendered
+audio stem, while skipping MIDI files that the separator does not consume. The
+compact mask model learns bass, drums, vocals, and other across the full audible
+range. Its spectral loss gives 0-250 Hz extra weight without removing the
+midrange or high-frequency objectives. It is a conservative analysis pass; the
+original float32 Demucs stems remain the reference so a small-data checkpoint
+never destructively replaces exported audio.

@@ -16,12 +16,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm /tmp/audiveris.deb \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /service
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements-separation.txt ./
+RUN pip install --no-cache-dir -r requirements-separation.txt
 COPY app.py .
 COPY transcription ./transcription
+COPY models ./models
 ENV AUDIVERIS_COMMAND=/usr/local/bin/audiveris
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
-ENV ENABLE_SOURCE_SEPARATION=false
+ENV ENABLE_SOURCE_SEPARATION=true
 EXPOSE 4318
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-4318}"]

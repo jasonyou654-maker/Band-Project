@@ -15,6 +15,7 @@ from typing import Callable
 from .adapters import SeparationResult
 from .audio import NormalizedAudio
 from .bass_refiner import BabySlakhBassRefiner
+from .multistem_refiner import SlakhMultistemRefiner
 
 
 class DemucsSourceSeparator:
@@ -27,6 +28,7 @@ class DemucsSourceSeparator:
         self.model = os.getenv("DEMUCS_MODEL", "htdemucs_ft")
         self.ffmpeg_command = os.getenv("FFMPEG_COMMAND", "ffmpeg")
         self.bass_refiner = BabySlakhBassRefiner.from_environment()
+        self.multistem_refiner = SlakhMultistemRefiner.from_environment()
 
     def separate(self, audio: NormalizedAudio, preferred_stem: str | None) -> SeparationResult:
         if not shutil.which(self.command):
@@ -55,9 +57,15 @@ class DemucsSourceSeparator:
         if preferred_stem in {"other", None}:
             warnings.append("The accompaniment stem is auxiliary evidence, not an isolated target instrument.")
         model_input_path = None
+        if self.multistem_refiner:
+            try:
+                learned_stems = self.multistem_refiner.separate(audio.path, selected.parent / "slakh-analysis")
+                model_input_path = learned_stems.get(preferred_stem or "other")
+            except RuntimeError as error:
+                warnings.append(f"Slakh full-band refinement was unavailable: {error}")
         if preferred_stem == "bass" and self.bass_refiner:
             try:
-                model_input_path = self.bass_refiner.refine(audio.path, selected.with_name("bass-babyslakh-analysis.wav"))
+                model_input_path = model_input_path or self.bass_refiner.refine(audio.path, selected.with_name("bass-babyslakh-analysis.wav"))
             except RuntimeError as error:
                 warnings.append(f"BabySlakh bass refinement was unavailable: {error}")
         model_input_path = model_input_path or self._make_model_input(selected, preferred_stem)

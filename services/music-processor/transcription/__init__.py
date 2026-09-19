@@ -15,6 +15,7 @@ from .score import CanonicalScore, GridRhythmQuantizer, Music21ScoreExporter, Qu
 from .pipeline import TranscriptionPipeline
 from .demucs_adapter import DemucsSourceSeparator
 from .bass_refiner import BabySlakhBassRefiner
+from .multistem_refiner import SlakhMultistemRefiner
 from .beat_tracking import EnergyBeatTracker, LibrosaBeatTracker
 from .revisions import ScoreEditOperation, ScoreRevision, apply_score_operations, correction_training_record
 
@@ -43,6 +44,7 @@ __all__ = [
     "TranscriptionPipeline",
     "DemucsSourceSeparator",
     "BabySlakhBassRefiner",
+    "SlakhMultistemRefiner",
     "EnergyBeatTracker",
     "LibrosaBeatTracker",
     "ScoreEditOperation",

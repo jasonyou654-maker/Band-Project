@@ -9,3 +9,7 @@ services:
     envVars:
       - key: WEB_ORIGINS
         value: https://jasonyou654-maker.github.io
+      - key: ENABLE_SOURCE_SEPARATION
+        value: "true"
+      - key: DEMUCS_MODEL
+        value: htdemucs_ft

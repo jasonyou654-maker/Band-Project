@@ -24,9 +24,11 @@
 .DS_Store
 *.pem
 __pycache__/
+/.pycache-local/
 /evaluation/reports/*.json
 /training/data/
 /training/checkpoints/
+/training/.venv/
 
 # debug
 npm-debug.log*

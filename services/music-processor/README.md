@@ -29,12 +29,13 @@ pipeline stage. The in-memory job registry is suitable for a single worker only;
 production deployment should replace it with a durable queue and object storage
 before accepting long jobs at scale.
 
-Install `requirements-separation.txt` and set `ENABLE_SOURCE_SEPARATION=true`
-on a worker provisioned for Demucs. The processor runs the fine-tuned
-`htdemucs_ft` model before every non-isolated analysis and retains complete
-float32 vocals, drums, bass, and other stems. The selected stem is never
-destructively denoised: Basic Pitch compares the untouched stem with a gently
-filtered analysis copy. Bass filtering preserves content down to 25 Hz.
+The included container installs `requirements-separation.txt` and enables
+Demucs. The processor runs the fine-tuned `htdemucs_ft` model before every
+non-isolated analysis and retains complete float32 vocals, drums, bass, and
+other stems. A packaged Slakh-trained four-stem analysis pass covers the full
+audible range while weighting 0-250 Hz more heavily. The selected Demucs stem
+is never destructively denoised and remains the reference evidence; bass
+filtering preserves content down to 25 Hz.
 
 `DEMUCS_MODEL`, `DEMUCS_SHIFTS`, and `DEMUCS_OVERLAP` can tune the quality/cost
 tradeoff. Production defaults are `htdemucs_ft`, one shift, and 0.5 overlap.

@@ -1,0 +1,58 @@
+{
+  "dataset": "Slakh2100 subset",
+  "trainingTracks": [
+    "Track00018"
+  ],
+  "validationTracks": [
+    "Track00019"
+  ],
+  "frequencyWeighting": {
+    "0-250Hz": 2.25,
+    "250-4000Hz": 1.25,
+    "4000-8000Hz": 1.1
+  },
+  "baselineValidationLoss": 0.1363649998093024,
+  "validationImprovementPercent": 28.96153855882786,
+  "metrics": [
+    {
+      "epoch": 1,
+      "trainingLoss": 0.4198015381892522,
+      "validationLoss": 0.1345523940399289
+    },
+    {
+      "epoch": 2,
+      "trainingLoss": 0.4173215975364049,
+      "validationLoss": 0.13248537736944854
+    },
+    {
+      "epoch": 3,
+      "trainingLoss": 0.45182087024052936,
+      "validationLoss": 0.12960414087865502
+    },
+    {
+      "epoch": 4,
+      "trainingLoss": 0.38948284089565277,
+      "validationLoss": 0.12562586006242782
+    },
+    {
+      "epoch": 5,
+      "trainingLoss": 0.34930414458115894,
+      "validationLoss": 0.12019188812701032
+    },
+    {
+      "epoch": 6,
+      "trainingLoss": 0.3363020122051239,
+      "validationLoss": 0.11320209677796811
+    },
+    {
+      "epoch": 7,
+      "trainingLoss": 0.30322177211443585,
+      "validationLoss": 0.10508899250999093
+    },
+    {
+      "epoch": 8,
+      "trainingLoss": 0.2778504466017087,
+      "validationLoss": 0.09687159780878574
+    }
+  ]
+}
