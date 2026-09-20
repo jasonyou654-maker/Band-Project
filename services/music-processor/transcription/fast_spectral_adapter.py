@@ -26,6 +26,17 @@ POLYPHONY = {"piano": 4, "chords": 4, "guitar": 3, "auto": 3, "drums": 2}
 class FastSpectralTranscriber:
     provider = "BandProject Fast Spectral Notes"
 
+    @classmethod
+    def warm(cls) -> None:
+        """Load heavy audio dependencies and prime FFT kernels before traffic."""
+        import numpy
+        import soundfile  # noqa: F401
+        from scipy.signal import resample_poly
+
+        silence = numpy.zeros(4096, dtype="float32")
+        resample_poly(silence, 1, 2)
+        cls._track(numpy, silence, 16000, "bass")
+
     def transcribe(self, audio: NormalizedAudio, target: TargetInstrument) -> TranscriberOutput:
         try:
             import numpy

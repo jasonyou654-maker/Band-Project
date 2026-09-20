@@ -53,6 +53,8 @@ SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 @app.on_event("startup")
 def warm_low_latency_models() -> None:
+    if os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower() == "fast-spectral":
+        FastSpectralTranscriber.warm()
     if os.getenv("SEPARATION_ENGINE", "demucs").lower() == "slakh":
         refiner = SlakhMultistemRefiner.from_environment()
         if refiner:
