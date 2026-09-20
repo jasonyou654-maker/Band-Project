@@ -75,7 +75,7 @@ def health() -> dict:
         "separationEngine": separation_engine,
         "transcriptionEngine": transcription_engine,
         "slakhMultistemRefiner": refiner_available,
-        "analysisMode": "basic-pitch-note-evidence-v2",
+        "analysisMode": "fast-spectral-note-evidence-v1" if transcription_engine == "fast-spectral" else "basic-pitch-note-evidence-v2",
     }
 
 

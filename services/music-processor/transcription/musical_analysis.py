@@ -34,7 +34,7 @@ def summarize_transcription(result: TranscriptionResult) -> dict:
         "instruments": [],
         "sections": [],
         "noteCount": len(events),
-        "provider": "Spotify Basic Pitch note evidence",
+        "provider": f"{result.metadata.transcriber} note evidence" if result.metadata else "Audio note evidence",
     }
 
 

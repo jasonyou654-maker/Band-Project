@@ -44,10 +44,10 @@ def build_multistem_mask_model(torch):
         def __init__(self) -> None:
             super().__init__()
             self.encoder = nn.Sequential(
-                nn.Conv2d(1, 32, 5, padding=2), nn.GELU(),
-                nn.Conv2d(32, 48, 3, padding=1), nn.GELU(),
-                nn.Conv2d(48, 48, 3, padding=1, groups=8), nn.GELU(),
-                nn.Conv2d(48, len(STEM_NAMES), 1),
+                nn.Conv2d(1, 12, 5, padding=2), nn.GELU(),
+                nn.Conv2d(12, 16, 3, padding=1), nn.GELU(),
+                nn.Conv2d(16, 16, 3, padding=1, groups=4), nn.GELU(),
+                nn.Conv2d(16, len(STEM_NAMES), 1),
             )
 
         def forward(self, magnitude):
