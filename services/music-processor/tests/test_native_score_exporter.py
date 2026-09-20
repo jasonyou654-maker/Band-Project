@@ -30,6 +30,29 @@ class NativeScoreExporterTests(unittest.TestCase):
             self.assertEqual(root.tag, "score-partwise")
             self.assertEqual(root.findtext("./part-list/score-part/part-name"), "Electric Bass")
 
+    def test_exports_detected_key_tempo_meter_and_multiple_measures(self):
+        source = RawNoteEvent(0.0, 0.5, 60, velocity=90, confidence=0.9)
+        score = CanonicalScore(
+            title="Verified",
+            target_instrument="piano",
+            beat_grid=BeatGrid(bpm=120, beats_seconds=tuple(index * 0.5 for index in range(9)), time_signature=(4, 4), confidence=0.9),
+            key_signature="C major",
+            measures=(
+                ScoreMeasure(1, (QuantizedNote(60, Fraction(0), Fraction(1), source_event=source),)),
+                ScoreMeasure(2, (QuantizedNote(64, Fraction(4), Fraction(1), source_event=source),)),
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            exports = NativeScoreExporter().export(score, Path(directory))
+            root = ET.parse(exports.musicxml_path).getroot()
+            self.assertEqual(len(root.findall("./part/measure")), 2)
+            self.assertEqual(root.findtext("./part/measure/attributes/key/fifths"), "0")
+            self.assertEqual(root.findtext("./part/measure/attributes/key/mode"), "major")
+            self.assertEqual(root.findtext("./part/measure/attributes/time/beats"), "4")
+            tempo_sound = root.find("./part/measure/direction/sound")
+            self.assertIsNotNone(tempo_sound)
+            self.assertEqual(tempo_sound.attrib["tempo"], "120")
+
 
 if __name__ == "__main__":
     unittest.main()

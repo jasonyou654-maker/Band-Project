@@ -264,7 +264,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
             transcriber=transcriber,
             separator=separator,
-            beat_tracker=None if transcription_engine == "fast-spectral" else EnergyBeatTracker(),
+            beat_tracker=EnergyBeatTracker(),
             quantizer=GridRhythmQuantizer(),
             score_exporter=NativeScoreExporter() if transcription_engine == "fast-spectral" else Music21ScoreExporter(),
             score_artifacts_directory=work / "artifacts",

@@ -15,6 +15,7 @@ from .contracts import BeatGrid, PipelineMetadata, PipelineStage, TranscriptionR
 from .refinement import RefinementPolicy, refine_events
 from .routing import SeparationMode, TargetRouter
 from .score import Music21ScoreExporter, RhythmQuantizer
+from .musical_analysis import estimate_key
 
 
 class TranscriptionPipeline:
@@ -87,6 +88,12 @@ class TranscriptionPipeline:
             # meter and metronome mark. The canonical score preserves measured
             # timing and emits free rhythm when pulse evidence is insufficient.
             canonical_score = self.quantizer.quantize(refined_events, beat_grid, request.audio.filename, request.target_instrument)
+            key_evidence = estimate_key(refined_events)
+            if key_evidence["key"] and key_evidence["mode"]:
+                canonical_score = replace(
+                    canonical_score,
+                    key_signature=f"{key_evidence['key']} {key_evidence['mode']}",
+                )
             exports = self.score_exporter.export(canonical_score, self.score_artifacts_directory)
             midi_path = exports.midi_path
             musicxml = exports.musicxml_path.read_text(encoding="utf-8")

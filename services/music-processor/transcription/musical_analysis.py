@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from math import sqrt
 
 from .contracts import TranscriptionResult
 
@@ -50,14 +51,23 @@ def estimate_key(events) -> dict:
     if total <= 0:
         return {"key": None, "mode": None, "confidence": 0}
     normalized = [value / total for value in chroma]
+    if sum(value > 0 for value in normalized) < 4:
+        return {"key": None, "mode": None, "confidence": 0}
+    centered_chroma = [value - sum(normalized) / 12 for value in normalized]
+
+    def correlation(profile, root):
+        centered_profile = [profile[(index - root) % 12] - sum(profile) / 12 for index in range(12)]
+        denominator = sqrt(sum(value * value for value in centered_chroma) * sum(value * value for value in centered_profile))
+        return sum(left * right for left, right in zip(centered_chroma, centered_profile)) / denominator if denominator else 0.0
+
     candidates: list[tuple[float, int, str]] = []
     for root in range(12):
-        major = sum(normalized[index] * MAJOR_PROFILE[(index - root) % 12] for index in range(12))
-        minor = sum(normalized[index] * MINOR_PROFILE[(index - root) % 12] for index in range(12))
+        major = correlation(MAJOR_PROFILE, root)
+        minor = correlation(MINOR_PROFILE, root)
         candidates.extend(((major, root, "major"), (minor, root, "minor")))
     candidates.sort(reverse=True)
     best, runner_up = candidates[0], candidates[1]
-    confidence = max(0, min(100, round((best[0] - runner_up[0]) / max(abs(best[0]), 1e-9) * 100)))
+    confidence = max(0, min(100, round((best[0] - runner_up[0]) * 50)))
     if confidence < MINIMUM_KEY_CONFIDENCE:
         return {"key": None, "mode": None, "confidence": confidence}
     return {"key": PITCH_NAMES[best[1]], "mode": best[2], "confidence": confidence}

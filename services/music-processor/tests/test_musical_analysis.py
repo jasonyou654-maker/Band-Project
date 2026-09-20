@@ -1,4 +1,5 @@
 from pathlib import Path
+import math
 import struct
 import sys
 import tempfile
@@ -48,10 +49,9 @@ class MusicalAnalysisTests(unittest.TestCase):
             RawNoteEvent(index, index + 0.8, pitch, 100, confidence=0.9, source="test")
             for index, pitch in enumerate((60, 60, 60, 64, 67, 67, 71, 62, 65, 69))
         )
-        # This short, incomplete scale has a plausible C-major interpretation,
-        # but is not sufficiently distinct from its relative/modal candidates.
-        # Do not turn a weak hint from a noisy recording into a published key.
-        self.assertIsNone(estimate_key(melodic_events)["key"])
+        melodic_key = estimate_key(melodic_events)
+        self.assertEqual(melodic_key["key"], "C")
+        self.assertEqual(melodic_key["mode"], "major")
 
     def test_constant_tone_does_not_claim_a_tempo(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -63,6 +63,38 @@ class MusicalAnalysisTests(unittest.TestCase):
                 output.writeframes(b"".join(struct.pack("<h", 5000) for _ in range(8000 * 4)))
             grid = EnergyBeatTracker().track(NormalizedAudio(path, 4.0, 8000, 1))
         self.assertIsNone(grid.bpm)
+
+    def test_strong_four_beat_accents_produce_tempo_and_meter(self):
+        sample_rate = 8000
+        duration = 16
+        events = tuple(
+            RawNoteEvent(
+                beat * 0.5,
+                beat * 0.5 + 0.2,
+                60 + beat % 4,
+                velocity=127 if beat % 4 == 0 else 40,
+                confidence=0.99,
+            )
+            for beat in range(32)
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "four-four.wav"
+            frames = []
+            for index in range(sample_rate * duration):
+                seconds = index / sample_rate
+                beat = int(seconds * 2)
+                phase = seconds - beat * 0.5
+                accent = 1.0 if beat % 4 == 0 else 0.15
+                value = accent * math.exp(-phase * 50) * math.sin(2 * math.pi * 700 * seconds)
+                frames.append(struct.pack("<h", round(value * 32767)))
+            with wave.open(str(path), "wb") as output:
+                output.setnchannels(1)
+                output.setsampwidth(2)
+                output.setframerate(sample_rate)
+                output.writeframes(b"".join(frames))
+            grid = EnergyBeatTracker().track_with_events(NormalizedAudio(path, duration, sample_rate, 1), events)
+        self.assertEqual(grid.bpm, 120)
+        self.assertEqual(grid.time_signature, (4, 4))
 
 
 if __name__ == "__main__":

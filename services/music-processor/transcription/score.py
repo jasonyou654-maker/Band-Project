@@ -202,6 +202,14 @@ class NativeScoreExporter:
     """Minimal low-latency MIDI/MusicXML exporter for the public worker."""
 
     DIVISIONS = 480
+    KEY_FIFTHS = {
+        "C major": 0, "G major": 1, "D major": 2, "A major": 3, "E major": 4,
+        "B major": 5, "F♯ major": 6, "C♯ major": 7, "F major": -1,
+        "B♭ major": -2, "E♭ major": -3, "A♭ major": -4,
+        "A minor": 0, "E minor": 1, "B minor": 2, "F♯ minor": 3,
+        "C♯ minor": 4, "D minor": -1, "G minor": -2, "C minor": -3,
+        "F minor": -4, "B♭ minor": -5, "E♭ minor": -6, "A♭ minor": -7,
+    }
 
     def export(self, score: CanonicalScore, output_directory: Path) -> ScoreExports:
         output_directory.mkdir(parents=True, exist_ok=True)
@@ -209,7 +217,7 @@ class NativeScoreExporter:
         musicxml_path = output_directory / "canonical-score.musicxml"
         notes = tuple(note for measure in score.measures for note in measure.notes)
         midi_path.write_bytes(self._midi(score, notes))
-        ET.ElementTree(self._musicxml(score, notes)).write(musicxml_path, encoding="utf-8", xml_declaration=True)
+        ET.ElementTree(self._musicxml(score)).write(musicxml_path, encoding="utf-8", xml_declaration=True)
         return ScoreExports(midi_path=midi_path, musicxml_path=musicxml_path)
 
     @classmethod
@@ -247,7 +255,7 @@ class NativeScoreExporter:
         return b"MThd" + struct.pack(">IHHH", 6, 0, 1, cls.DIVISIONS) + b"MTrk" + struct.pack(">I", len(track)) + bytes(track)
 
     @classmethod
-    def _musicxml(cls, score: CanonicalScore, notes: tuple[QuantizedNote, ...]):
+    def _musicxml(cls, score: CanonicalScore):
         root = ET.Element("score-partwise", version="4.0")
         work = ET.SubElement(root, "work")
         ET.SubElement(work, "work-title").text = score.title
@@ -255,31 +263,49 @@ class NativeScoreExporter:
         score_part = ET.SubElement(part_list, "score-part", id="P1")
         ET.SubElement(score_part, "part-name").text = MUSIC21_INSTRUMENT_NAMES.get(score.target_instrument, "Transcription")
         part = ET.SubElement(root, "part", id="P1")
-        measure = ET.SubElement(part, "measure", number="1")
-        attributes = ET.SubElement(measure, "attributes")
-        ET.SubElement(attributes, "divisions").text = str(cls.DIVISIONS)
-        time = ET.SubElement(attributes, "time")
+        pitch_names = (("C", 0), ("C", 1), ("D", 0), ("E", -1), ("E", 0), ("F", 0), ("F", 1), ("G", 0), ("A", -1), ("A", 0), ("B", -1), ("B", 0))
+        beats_per_measure = None
         if score.beat_grid.time_signature:
             numerator, denominator = score.beat_grid.time_signature
-            ET.SubElement(time, "beats").text = str(numerator)
-            ET.SubElement(time, "beat-type").text = str(denominator)
-        else:
-            ET.SubElement(time, "senza-misura").text = "free"
-        cursor = 0
-        pitch_names = (("C", 0), ("C", 1), ("D", 0), ("E", -1), ("E", 0), ("F", 0), ("F", 1), ("G", 0), ("A", -1), ("A", 0), ("B", -1), ("B", 0))
-        for item in sorted(notes, key=lambda note: (note.start_beat, note.pitch)):
-            start = cls._ticks(item.start_beat)
-            if start != cursor:
-                movement = ET.SubElement(measure, "forward" if start > cursor else "backup")
-                ET.SubElement(movement, "duration").text = str(abs(start - cursor))
-            note = ET.SubElement(measure, "note")
-            pitch = ET.SubElement(note, "pitch")
-            step, alter = pitch_names[item.pitch % 12]
-            ET.SubElement(pitch, "step").text = step
-            if alter:
-                ET.SubElement(pitch, "alter").text = str(alter)
-            ET.SubElement(pitch, "octave").text = str(item.pitch // 12 - 1)
-            duration = max(1, cls._ticks(item.duration_beats))
-            ET.SubElement(note, "duration").text = str(duration)
-            cursor = start + duration
+            beats_per_measure = Fraction(numerator * 4, denominator)
+        for score_measure in score.measures:
+            measure = ET.SubElement(part, "measure", number=str(score_measure.index))
+            if score_measure.index == 1:
+                attributes = ET.SubElement(measure, "attributes")
+                ET.SubElement(attributes, "divisions").text = str(cls.DIVISIONS)
+                if score.key_signature in cls.KEY_FIFTHS:
+                    key = ET.SubElement(attributes, "key")
+                    ET.SubElement(key, "fifths").text = str(cls.KEY_FIFTHS[score.key_signature])
+                    ET.SubElement(key, "mode").text = score.key_signature.rsplit(" ", 1)[1]
+                time = ET.SubElement(attributes, "time")
+                if score.beat_grid.time_signature:
+                    numerator, denominator = score.beat_grid.time_signature
+                    ET.SubElement(time, "beats").text = str(numerator)
+                    ET.SubElement(time, "beat-type").text = str(denominator)
+                else:
+                    ET.SubElement(time, "senza-misura").text = "free"
+                if score.beat_grid.bpm:
+                    direction = ET.SubElement(measure, "direction", placement="above")
+                    direction_type = ET.SubElement(direction, "direction-type")
+                    metronome = ET.SubElement(direction_type, "metronome")
+                    ET.SubElement(metronome, "beat-unit").text = "quarter"
+                    ET.SubElement(metronome, "per-minute").text = str(round(score.beat_grid.bpm, 2))
+                    ET.SubElement(direction, "sound", tempo=str(round(score.beat_grid.bpm, 2)))
+            measure_offset = beats_per_measure * (score_measure.index - 1) if beats_per_measure else Fraction(0)
+            cursor = 0
+            for item in sorted(score_measure.notes, key=lambda note: (note.start_beat, note.pitch)):
+                start = cls._ticks(max(Fraction(0), item.start_beat - measure_offset))
+                if start != cursor:
+                    movement = ET.SubElement(measure, "forward" if start > cursor else "backup")
+                    ET.SubElement(movement, "duration").text = str(abs(start - cursor))
+                note = ET.SubElement(measure, "note")
+                pitch = ET.SubElement(note, "pitch")
+                step, alter = pitch_names[item.pitch % 12]
+                ET.SubElement(pitch, "step").text = step
+                if alter:
+                    ET.SubElement(pitch, "alter").text = str(alter)
+                ET.SubElement(pitch, "octave").text = str(item.pitch // 12 - 1)
+                duration = max(1, cls._ticks(item.duration_beats))
+                ET.SubElement(note, "duration").text = str(duration)
+                cursor = start + duration
         return root
