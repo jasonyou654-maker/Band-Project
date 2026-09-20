@@ -100,7 +100,7 @@ class SlakhMultistemRefiner:
         except ImportError as error:
             raise RuntimeError("The Slakh ONNX refiner requires numpy.") from error
         session = _shared_onnx_session(self.model_path)
-        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "15")) * sample_rate))
+        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "8")) * sample_rate))
         overlap = min(sample_rate, chunk_samples // 4)
         step = chunk_samples - overlap
         separated = numpy.zeros((len(STEM_NAMES), waveform.shape[0]), dtype="float32")
@@ -127,7 +127,11 @@ class SlakhMultistemRefiner:
 
     def warm(self) -> None:
         if self.model_path.suffix == ".onnx":
-            _shared_onnx_session(self.model_path)
+            import numpy
+            session = _shared_onnx_session(self.model_path)
+            chunk_seconds = max(5, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "8"))))
+            frame_count = 1 + (chunk_seconds * 16000) // 256
+            session.run(["stems"], {"magnitude": numpy.zeros((1, 1, 513, frame_count), dtype="float32")})
 
     def _separate_torch(self, waveform, sample_rate: int, n_fft: int, hop_length: int):
         try:

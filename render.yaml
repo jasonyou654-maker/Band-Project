@@ -18,4 +18,4 @@ services:
       - key: TRANSCRIPTION_ENGINE
         value: fast-spectral
       - key: MULTISTEM_CHUNK_SECONDS
-        value: "15"
+        value: "8"
