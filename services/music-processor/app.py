@@ -283,8 +283,9 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             midi_base64=base64.b64encode(result.midi_path.read_bytes()).decode("ascii"),
         )
         payload = result.to_api_dict()
+        exporter_name = "native score export" if transcription_engine == "fast-spectral" else "music21"
         payload.update({
-            "provider": f"{result.metadata.transcriber if result.metadata else 'Audio note recognizer'} + music21",
+            "provider": f"{result.metadata.transcriber if result.metadata else 'Audio note recognizer'} + {exporter_name}",
             "mode": "real",
             "analysis": summarize_transcription(result),
         })
