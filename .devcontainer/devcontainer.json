@@ -4,8 +4,13 @@
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
-  "forwardPorts": [4318],
+  "forwardPorts": [3000, 4318],
   "portsAttributes": {
+    "3000": {
+      "label": "BandProject sample web app",
+      "onAutoForward": "openPreview",
+      "visibility": "public"
+    },
     "4318": {
       "label": "BandProject music processor",
       "onAutoForward": "notify",

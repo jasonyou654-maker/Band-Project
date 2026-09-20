@@ -23,4 +23,8 @@ docker run -d --rm \
 
 echo "Sample processor started. Wait for readiness with:"
 echo "  curl --fail-with-body http://127.0.0.1:4318/health"
-echo "Then copy the public forwarded port URL into GitHub Actions variable MUSIC_PROCESSOR_URL and rerun Deploy GitHub Pages."
+echo "Installing web dependencies and starting the sample web app on port 3000..."
+
+corepack enable
+pnpm install --frozen-lockfile
+exec env MUSIC_PROCESSOR_URL=http://127.0.0.1:4318 pnpm dev -- --host 0.0.0.0
