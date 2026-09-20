@@ -17,3 +17,5 @@ services:
         value: slakh
       - key: TRANSCRIPTION_ENGINE
         value: fast-spectral
+      - key: MULTISTEM_CHUNK_SECONDS
+        value: "15"

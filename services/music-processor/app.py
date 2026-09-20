@@ -53,6 +53,8 @@ SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 @app.on_event("startup")
 def warm_low_latency_models() -> None:
+    if os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower() == "fast-spectral":
+        import music21  # noqa: F401
     if os.getenv("SEPARATION_ENGINE", "demucs").lower() == "slakh":
         refiner = SlakhMultistemRefiner.from_environment()
         if refiner:
@@ -261,7 +263,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
             transcriber=transcriber,
             separator=separator,
-            beat_tracker=EnergyBeatTracker(),
+            beat_tracker=None if transcription_engine == "fast-spectral" else EnergyBeatTracker(),
             quantizer=GridRhythmQuantizer(),
             score_exporter=Music21ScoreExporter(),
             score_artifacts_directory=work / "artifacts",

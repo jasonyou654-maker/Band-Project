@@ -100,7 +100,7 @@ class SlakhMultistemRefiner:
         except ImportError as error:
             raise RuntimeError("The Slakh ONNX refiner requires numpy.") from error
         session = _shared_onnx_session(self.model_path)
-        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "8")) * sample_rate))
+        chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "15")) * sample_rate))
         overlap = min(sample_rate, chunk_samples // 4)
         step = chunk_samples - overlap
         separated = numpy.zeros((len(STEM_NAMES), waveform.shape[0]), dtype="float32")
