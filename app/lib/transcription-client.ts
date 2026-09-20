@@ -40,10 +40,8 @@ export async function transcribeAudio(file: File, options: { targetInstrument: s
     return payload;
   }
 
-  // The public Render worker has no durable disk on the free plan. A queued
-  // job can disappear if the instance is recycled between POST and polling.
-  // Fast mode completes within the proxy window, so keep upload and result in
-  // one request and never depend on process-local job state.
+  // A queued job can disappear if a single-worker service is recycled between
+  // POST and polling. Keep upload and result in one request instead.
   options.onStatus?.("transcribing");
   let response: Response;
   try {
@@ -53,7 +51,7 @@ export async function transcribeAudio(file: File, options: { targetInstrument: s
       signal: AbortSignal.timeout(180_000),
     });
   } catch {
-    throw new Error("无法完成扒谱请求。Render 服务可能正在唤醒或重启，请重新上传；音频不会被保存或发布。");
+    throw new Error("无法完成扒谱请求。处理服务可能正在启动或重启，请重新上传；音频不会被保存或发布。");
   }
   const payload = await response.json().catch(() => ({})) as MusicProcessingResult & { detail?: string; error?: string };
   if (!response.ok) throw new Error(payload.detail || payload.error || "扒谱服务未能生成真实乐谱。");

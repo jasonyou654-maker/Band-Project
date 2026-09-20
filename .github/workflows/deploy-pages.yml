@@ -30,15 +30,16 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           NEXT_PUBLIC_STATIC_SITE: "true"
-          # Keep the static client pointed at the live public processor.  A
-          # stale repository variable previously referenced a retired Render
-          # service, leaving browser uploads stuck before a response arrived.
-          NEXT_PUBLIC_MUSIC_PROCESSOR_URL: https://bandproject-music-processor.onrender.com
+          # Set the repository Actions variable MUSIC_PROCESSOR_URL after a
+          # new processor has passed its production smoke test. Keeping this
+          # fallback makes the Pages site usable while a replacement is being
+          # provisioned, without baking a provider choice into application code.
+          NEXT_PUBLIC_MUSIC_PROCESSOR_URL: ${{ vars.MUSIC_PROCESSOR_URL || 'https://bandproject-music-processor.onrender.com' }}
       - run: sh ./scripts/render-pages.sh
         env:
           GITHUB_PAGES: "true"
           NEXT_PUBLIC_STATIC_SITE: "true"
-          NEXT_PUBLIC_MUSIC_PROCESSOR_URL: https://bandproject-music-processor.onrender.com
+          NEXT_PUBLIC_MUSIC_PROCESSOR_URL: ${{ vars.MUSIC_PROCESSOR_URL || 'https://bandproject-music-processor.onrender.com' }}
       - run: touch dist/client/.nojekyll
       - uses: actions/configure-pages@v5
         with:

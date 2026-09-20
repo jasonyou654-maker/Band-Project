@@ -62,6 +62,37 @@ docker run --rm -p 4318:4318 \
   -e WEB_ORIGINS=https://YOUR_NAME.github.io bandproject-music-processor
 ```
 
+## Production: Google Cloud Run
+
+The included Dockerfile can be deployed unchanged. For this CPU-bound service,
+do not use scale-to-zero: a sleeping instance makes a browser upload fail
+before transcription begins. The deployment script creates an Artifact
+Registry repository when required, builds the container, then configures one
+minimum warm Cloud Run instance. It deliberately keeps concurrency at one so
+two simultaneous audio analyses do not compete for the same model memory and
+CPU.
+
+Prerequisites: a Google Cloud project with billing enabled, the `gcloud` CLI
+authenticated for that project, and permission to enable APIs and deploy Cloud
+Run services.
+
+```bash
+./scripts/deploy-cloud-run.sh YOUR_GCP_PROJECT_ID asia-southeast1
+```
+
+The command prints the HTTPS processor URL. Verify it before changing the
+website:
+
+```bash
+curl --fail-with-body https://YOUR_CLOUD_RUN_URL/health
+```
+
+Then set the GitHub Actions repository variable `MUSIC_PROCESSOR_URL` to that
+exact URL and push or re-run **Deploy GitHub Pages**. The workflow reads that
+variable at build time; until it is set, it continues using the existing
+processor URL. Keep the previous service running until a real `/transcribe`
+upload has returned notes and MusicXML from Cloud Run.
+
 The processor runtime is Python 3.11. Basic Pitch 0.4.0 does not support a
 native Apple Silicon Python 3.12 installation because of its TensorFlow macOS
 dependency constraint. Use this container for local processor development on
