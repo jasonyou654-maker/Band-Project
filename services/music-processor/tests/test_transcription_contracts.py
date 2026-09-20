@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -47,12 +48,14 @@ class TranscriptionContractTests(unittest.TestCase):
             metadata=PipelineMetadata(pipeline_version="v1", transcriber="basic-pitch"),
             warnings=("Review the draft.",),
             musicxml="<score-partwise/>",
+            canonical_score=SimpleNamespace(measures=()),
         )
         payload = result.to_api_dict()
         self.assertEqual(payload["noteEvents"][0]["pitch"], 40)
         self.assertEqual(payload["rawNoteEvents"][0]["source"], "basic-pitch")
         self.assertEqual(payload["beatGrid"]["bpm"], 120)
         self.assertEqual(payload["pipeline"]["transcriber"], "basic-pitch")
+        self.assertEqual(payload["notation"]["rhythmMode"], "pulse")
 
     def test_invalid_note_boundaries_are_rejected(self):
         with self.assertRaises(ValueError):

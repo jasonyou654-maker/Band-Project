@@ -53,5 +53,5 @@ jobs:
       - name: Verify upload, notes, rhythm, harmony, MIDI, and MusicXML
         run: >-
           docker run --rm
-          -v "${{ github.workspace }}/services/music-processor/smoke_test.py:/smoke_test.py:ro"
-          --entrypoint python bandproject-music-processor /smoke_test.py
+          -v "${{ github.workspace }}/services/music-processor/smoke_test.py:/service/smoke_test.py:ro"
+          --entrypoint python bandproject-music-processor smoke_test.py
