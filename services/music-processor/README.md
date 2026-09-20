@@ -68,7 +68,8 @@ The included Dockerfile can be deployed unchanged. For this CPU-bound service,
 do not use scale-to-zero: a sleeping instance makes a browser upload fail
 before transcription begins. The deployment script creates an Artifact
 Registry repository when required, builds the container, then configures one
-minimum warm Cloud Run instance. It deliberately keeps concurrency at one so
+minimum warm Cloud Run instance in production mode. It deliberately keeps
+concurrency at one so
 two simultaneous audio analyses do not compete for the same model memory and
 CPU.
 
@@ -76,8 +77,16 @@ Prerequisites: a Google Cloud project with billing enabled, the `gcloud` CLI
 authenticated for that project, and permission to enable APIs and deploy Cloud
 Run services.
 
+For a cost-free proof of concept, use `demo`. It permits scale-to-zero, so run
+the health check once before the first browser upload. Use `production` only
+when you are ready to keep one warm instance and avoid cold starts.
+
 ```bash
-./scripts/deploy-cloud-run.sh YOUR_GCP_PROJECT_ID asia-southeast1
+# Temporary sample/test deployment
+./scripts/deploy-cloud-run.sh YOUR_GCP_PROJECT_ID asia-southeast1 demo
+
+# Stable deployment after the sample is approved
+./scripts/deploy-cloud-run.sh YOUR_GCP_PROJECT_ID asia-southeast1 production
 ```
 
 The command prints the HTTPS processor URL. Verify it before changing the
