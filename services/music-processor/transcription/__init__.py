@@ -11,7 +11,7 @@ from .contracts import (
 from .routing import SeparationMode, TargetRoute, TargetRouter
 from .basic_pitch_adapter import BasicPitchProfile, BasicPitchTranscriber, PROFILES
 from .refinement import RefinementPolicy, RefinementReport, refine_events
-from .score import CanonicalScore, GridRhythmQuantizer, Music21ScoreExporter, QuantizedNote, RhythmQuantizer, ScoreMeasure
+from .score import CanonicalScore, GridRhythmQuantizer, Music21ScoreExporter, NativeScoreExporter, QuantizedNote, RhythmQuantizer, ScoreMeasure
 from .pipeline import TranscriptionPipeline
 from .demucs_adapter import DemucsSourceSeparator
 from .bass_refiner import BabySlakhBassRefiner
@@ -39,6 +39,7 @@ __all__ = [
     "CanonicalScore",
     "GridRhythmQuantizer",
     "Music21ScoreExporter",
+    "NativeScoreExporter",
     "QuantizedNote",
     "RhythmQuantizer",
     "ScoreMeasure",

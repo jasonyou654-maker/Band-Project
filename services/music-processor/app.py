@@ -32,7 +32,7 @@ from transcription.demucs_adapter import DemucsSourceSeparator
 from transcription.multistem_refiner import SlakhMultistemRefiner
 from transcription.beat_tracking import EnergyBeatTracker
 from transcription.pipeline import TranscriptionPipeline
-from transcription.score import GridRhythmQuantizer, Music21ScoreExporter
+from transcription.score import GridRhythmQuantizer, Music21ScoreExporter, NativeScoreExporter
 from transcription.musical_analysis import summarize_transcription
 
 app = FastAPI(title="BandProject Music Processor", version="0.1.0")
@@ -53,8 +53,6 @@ SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 @app.on_event("startup")
 def warm_low_latency_models() -> None:
-    if os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower() == "fast-spectral":
-        import music21  # noqa: F401
     if os.getenv("SEPARATION_ENGINE", "demucs").lower() == "slakh":
         refiner = SlakhMultistemRefiner.from_environment()
         if refiner:
@@ -242,10 +240,12 @@ def validate_audio_request(suffix: str, target_instrument: str, source_type: str
 
 def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrument: str, source_type: str, strict_rhythm: bool) -> dict:
     validate_audio_request(suffix, target_instrument, source_type)
-    try:
-        import music21  # noqa: F401
-    except ImportError as error:
-        raise HTTPException(503, "music21 is not installed in the processing service.") from error
+    transcription_engine = os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower()
+    if transcription_engine != "fast-spectral":
+        try:
+            import music21  # noqa: F401
+        except ImportError as error:
+            raise HTTPException(503, "music21 is not installed in the processing service.") from error
     with tempfile.TemporaryDirectory(prefix="bandproject-audio-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
@@ -257,7 +257,6 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             strict_rhythm=strict_rhythm,
         )
         separator = DemucsSourceSeparator(work / "stems") if os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" else None
-        transcription_engine = os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower()
         transcriber = FastSpectralTranscriber() if transcription_engine == "fast-spectral" else BasicPitchTranscriber(work / "artifacts")
         pipeline = TranscriptionPipeline(
             preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
@@ -265,7 +264,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             separator=separator,
             beat_tracker=None if transcription_engine == "fast-spectral" else EnergyBeatTracker(),
             quantizer=GridRhythmQuantizer(),
-            score_exporter=Music21ScoreExporter(),
+            score_exporter=NativeScoreExporter() if transcription_engine == "fast-spectral" else Music21ScoreExporter(),
             score_artifacts_directory=work / "artifacts",
         )
         try:
