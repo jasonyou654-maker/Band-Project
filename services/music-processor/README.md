@@ -102,6 +102,23 @@ variable at build time; until it is set, it continues using the existing
 processor URL. Keep the previous service running until a real `/transcribe`
 upload has returned notes and MusicXML from Cloud Run.
 
+## No-payment sample: GitHub Codespaces
+
+For a temporary review without a payment method, open this repository on a
+personal GitHub account and choose **Code → Codespaces → Create codespace on
+main**. The included development configuration supplies Docker and forwards
+port 4318. In the terminal, run:
+
+```bash
+./scripts/run-codespaces-sample.sh
+```
+
+Wait until `/health` reports `"status":"ready"`. In the **Ports** panel copy
+the public URL for port 4318, set it as the repository Actions variable
+`MUSIC_PROCESSOR_URL`, and re-run **Deploy GitHub Pages**. The sample exists
+only while the Codespace is running; stop it after testing to preserve the
+included GitHub quota.
+
 The processor runtime is Python 3.11. Basic Pitch 0.4.0 does not support a
 native Apple Silicon Python 3.12 installation because of its TensorFlow macOS
 dependency constraint. Use this container for local processor development on
