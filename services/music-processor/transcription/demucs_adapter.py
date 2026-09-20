@@ -100,7 +100,7 @@ class DemucsSourceSeparator:
                 duration_seconds=audio.duration_seconds,
                 sample_rate_hz=16000,
                 channels=1,
-                model_input_path=audio.path,
+                model_input_path=None,
             ),
             stems=stem_paths,
             provider="Slakh full-band four-stem separator",

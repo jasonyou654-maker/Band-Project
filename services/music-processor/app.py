@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from transcription.audio import FfmpegAudioPreprocessor
 from transcription.basic_pitch_adapter import BasicPitchTranscriber
+from transcription.fast_spectral_adapter import FastSpectralTranscriber
 from transcription.contracts import AudioAsset, TranscriptionRequest
 from transcription.demucs_adapter import DemucsSourceSeparator
 from transcription.multistem_refiner import SlakhMultistemRefiner
@@ -50,10 +51,19 @@ TARGET_INSTRUMENTS = {"guitar", "bass", "piano", "vocals", "drums", "chords", "l
 SOURCE_TYPES = {"isolated", "mix", "unknown"}
 
 
+@app.on_event("startup")
+def warm_low_latency_models() -> None:
+    if os.getenv("SEPARATION_ENGINE", "demucs").lower() == "slakh":
+        refiner = SlakhMultistemRefiner.from_environment()
+        if refiner:
+            refiner.warm()
+
+
 @app.get("/health")
 def health() -> dict:
     refiner_available = SlakhMultistemRefiner.from_environment() is not None
     separation_engine = os.getenv("SEPARATION_ENGINE", "demucs").lower()
+    transcription_engine = os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower()
     separator_available = refiner_available if separation_engine == "slakh" else bool(shutil.which(os.getenv("DEMUCS_COMMAND", "demucs")))
     return {
         "status": "ready",
@@ -63,6 +73,7 @@ def health() -> dict:
         "music21": module_available("music21"),
         "sourceSeparation": os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" and separator_available,
         "separationEngine": separation_engine,
+        "transcriptionEngine": transcription_engine,
         "slakhMultistemRefiner": refiner_available,
         "analysisMode": "basic-pitch-note-evidence-v2",
     }
@@ -244,9 +255,11 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             strict_rhythm=strict_rhythm,
         )
         separator = DemucsSourceSeparator(work / "stems") if os.getenv("ENABLE_SOURCE_SEPARATION", "false").lower() == "true" else None
+        transcription_engine = os.getenv("TRANSCRIPTION_ENGINE", "basic-pitch").lower()
+        transcriber = FastSpectralTranscriber() if transcription_engine == "fast-spectral" else BasicPitchTranscriber(work / "artifacts")
         pipeline = TranscriptionPipeline(
             preprocessor=FfmpegAudioPreprocessor(work / "normalized"),
-            transcriber=BasicPitchTranscriber(work / "artifacts"),
+            transcriber=transcriber,
             separator=separator,
             beat_tracker=EnergyBeatTracker(),
             quantizer=GridRhythmQuantizer(),
@@ -270,7 +283,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
         )
         payload = result.to_api_dict()
         payload.update({
-            "provider": "Spotify Basic Pitch + music21",
+            "provider": f"{result.metadata.transcriber if result.metadata else 'Audio note recognizer'} + music21",
             "mode": "real",
             "analysis": summarize_transcription(result),
         })

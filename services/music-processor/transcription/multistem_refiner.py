@@ -4,8 +4,36 @@ from __future__ import annotations
 from math import gcd
 import os
 from pathlib import Path
+from threading import Lock
 
 STEM_NAMES = ("bass", "drums", "vocals", "other")
+_ONNX_SESSIONS = {}
+_ONNX_SESSION_LOCK = Lock()
+
+
+def _shared_onnx_session(model_path: Path):
+    key = str(model_path.resolve())
+    if key in _ONNX_SESSIONS:
+        return _ONNX_SESSIONS[key]
+    with _ONNX_SESSION_LOCK:
+        if key not in _ONNX_SESSIONS:
+            try:
+                import onnxruntime
+            except ImportError as error:
+                raise RuntimeError("The Slakh ONNX refiner requires onnxruntime.") from error
+            if hasattr(onnxruntime, "disable_telemetry_events"):
+                onnxruntime.disable_telemetry_events()
+            options = onnxruntime.SessionOptions()
+            options.intra_op_num_threads = max(1, int(os.getenv("ONNX_INTRA_OP_THREADS", "2")))
+            options.inter_op_num_threads = 1
+            options.execution_mode = onnxruntime.ExecutionMode.ORT_SEQUENTIAL
+            options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+            _ONNX_SESSIONS[key] = onnxruntime.InferenceSession(
+                key,
+                sess_options=options,
+                providers=["CPUExecutionProvider"],
+            )
+    return _ONNX_SESSIONS[key]
 
 
 def build_multistem_mask_model(torch):
@@ -69,10 +97,9 @@ class SlakhMultistemRefiner:
     def _separate_onnx(self, waveform, sample_rate: int, n_fft: int, hop_length: int):
         try:
             import numpy
-            import onnxruntime
         except ImportError as error:
-            raise RuntimeError("The Slakh ONNX refiner requires numpy and onnxruntime.") from error
-        session = onnxruntime.InferenceSession(str(self.model_path), providers=["CPUExecutionProvider"])
+            raise RuntimeError("The Slakh ONNX refiner requires numpy.") from error
+        session = _shared_onnx_session(self.model_path)
         chunk_samples = max(5 * sample_rate, int(float(os.getenv("MULTISTEM_CHUNK_SECONDS", "8")) * sample_rate))
         overlap = min(sample_rate, chunk_samples // 4)
         step = chunk_samples - overlap
@@ -97,6 +124,10 @@ class SlakhMultistemRefiner:
             separated[:, start:end] += chunk_audio * envelope
             weights[start:end] += envelope
         return numpy.clip(separated / numpy.maximum(weights, 1e-6), -1, 1)
+
+    def warm(self) -> None:
+        if self.model_path.suffix == ".onnx":
+            _shared_onnx_session(self.model_path)
 
     def _separate_torch(self, waveform, sample_rate: int, n_fft: int, hop_length: int):
         try:

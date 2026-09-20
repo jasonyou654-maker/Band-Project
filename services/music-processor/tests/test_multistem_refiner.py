@@ -46,7 +46,7 @@ class MultistemRefinerTests(unittest.TestCase):
                 result = DemucsSourceSeparator(root / "outputs").separate(NormalizedAudio(source, 1.0, 44100, 2), "bass")
             self.assertEqual(result.provider, "Slakh full-band four-stem separator")
             self.assertEqual(set(result.stems), set(STEM_NAMES))
-            self.assertEqual(result.primary_audio.model_input_path, source)
+            self.assertIsNone(result.primary_audio.model_input_path)
 
 
 if __name__ == "__main__":

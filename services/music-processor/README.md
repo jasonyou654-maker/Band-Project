@@ -33,7 +33,12 @@ The included container installs `requirements-separation.txt` and enables the
 low-memory Slakh ONNX separator. It retains float32 vocals, drums, bass, and
 other stems across the full audible range while weighting 0-250 Hz more
 heavily. Inference runs in overlapping chunks so memory does not grow with the
-uploaded song. The normalized mix remains independent reference evidence.
+uploaded song. The normalized mix remains untouched for later re-analysis.
+
+The public worker uses `TRANSCRIPTION_ENGINE=fast-spectral`: a single-pass,
+vectorized note tracker designed for warm short-clip responses under ten
+seconds. Set `TRANSCRIPTION_ENGINE=basic-pitch` when accuracy matters more than
+latency; that mode keeps the heavier Spotify model and dual-pass evidence.
 
 Workers with more memory can install Demucs and set `SEPARATION_ENGINE=demucs`.
 That path runs the fine-tuned `htdemucs_ft` model and keeps its original float32

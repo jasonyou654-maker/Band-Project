@@ -25,5 +25,6 @@ ENV AUDIVERIS_COMMAND=/usr/local/bin/audiveris
 ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 ENV ENABLE_SOURCE_SEPARATION=true
 ENV SEPARATION_ENGINE=slakh
+ENV TRANSCRIPTION_ENGINE=fast-spectral
 EXPOSE 4318
 CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${PORT:-4318}"]

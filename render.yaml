@@ -15,3 +15,5 @@ services:
         value: htdemucs_ft
       - key: SEPARATION_ENGINE
         value: slakh
+      - key: TRANSCRIPTION_ENGINE
+        value: fast-spectral
