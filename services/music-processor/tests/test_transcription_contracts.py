@@ -7,6 +7,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import wave
 
 
 SERVICE_ROOT = Path(__file__).parents[1]
@@ -258,6 +259,35 @@ class TranscriptionContractTests(unittest.TestCase):
                 normalized = FfmpegAudioPreprocessor(root / "normalized", command_runner=runner).normalize(request, source)
             self.assertTrue(normalized.path.exists())
             self.assertIsNone(normalized.model_input_path)
+
+    def test_ffmpeg_preprocessor_reads_normalized_wav_when_ffprobe_is_missing(self):
+        request = TranscriptionRequest(
+            request_id="request-no-ffprobe",
+            audio=AudioAsset(filename="take.wav", mime_type="audio/wav", byte_size=10),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source.wav"
+            source.write_bytes(b"source")
+            commands = []
+
+            def runner(command, **_kwargs):
+                commands.append(command)
+                with wave.open(str(command[-1]), "wb") as rendered:
+                    rendered.setnchannels(2)
+                    rendered.setsampwidth(2)
+                    rendered.setframerate(44100)
+                    rendered.writeframes(b"\0\0" * 176400)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            def resolve(command):
+                return "/runtime/ffmpeg" if command == "ffmpeg" else None
+
+            with patch("transcription.audio.shutil.which", side_effect=resolve):
+                normalized = FfmpegAudioPreprocessor(root / "normalized", command_runner=runner).normalize(request, source)
+            self.assertEqual(normalized.duration_seconds, 2.0)
+            self.assertEqual(len(commands), 2)
+            self.assertTrue(all(command[0] == "ffmpeg" for command in commands))
 
     def test_demucs_prefers_requested_bass_stem(self):
         with tempfile.TemporaryDirectory() as directory:
