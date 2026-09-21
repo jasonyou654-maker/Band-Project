@@ -53,6 +53,11 @@ fi
 health="$(curl --silent --fail "$processor_url/health")"
 echo "Processor ready: $health"
 
+if curl --silent --fail http://127.0.0.1:3000/ >/dev/null 2>&1; then
+  echo "Sample web app is already running on port 3000."
+  exit 0
+fi
+
 if ! command -v pnpm >/dev/null; then
   if command -v corepack >/dev/null; then
     corepack enable

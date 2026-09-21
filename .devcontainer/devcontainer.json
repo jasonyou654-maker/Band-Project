@@ -1,17 +1,13 @@
 {
   "name": "BandProject sample processor",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-  "forwardPorts": [3000, 4318],
+  "postStartCommand": "mkdir -p .codespaces-runtime && nohup bash scripts/run-codespaces-sample.sh >.codespaces-runtime/launcher.log 2>&1 &",
+  "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
       "label": "BandProject sample web app",
       "onAutoForward": "openPreview",
       "visibility": "public"
-    },
-    "4318": {
-      "label": "BandProject music processor",
-      "onAutoForward": "notify",
-      "visibility": "private"
     }
   }
 }

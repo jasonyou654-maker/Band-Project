@@ -107,7 +107,8 @@ upload has returned notes and MusicXML from Cloud Run.
 For a temporary review without a payment method, open this repository on a
 personal GitHub account and choose **Code → Codespaces → Create codespace on
 main**. The included development configuration forwards a temporary web app on
-port 3000. Docker is not required. In the terminal, run:
+port 3000. Docker is not required, and a new Codespace starts the processor and
+web app automatically. If automatic startup was interrupted, run:
 
 ```bash
 ./scripts/run-codespaces-sample.sh
