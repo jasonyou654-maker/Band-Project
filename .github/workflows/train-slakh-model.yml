@@ -1,0 +1,105 @@
+name: Train Slakh full-band model
+
+on:
+  workflow_dispatch:
+    inputs:
+      epochs:
+        description: Training epochs
+        required: true
+        default: "8"
+        type: choice
+        options:
+          - "4"
+          - "8"
+          - "12"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slakh-full-band-training
+  cancel-in-progress: false
+
+jobs:
+  train-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: training/requirements-slakh.txt
+      - name: Restore bounded Slakh subset
+        uses: actions/cache@v4
+        with:
+          path: training/data/slakh-subset
+          key: slakh-audio-track00018-00022-v1
+      - name: Install audio and training dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libsndfile1
+          python -m pip install --upgrade pip
+          python -m pip install -r training/requirements-slakh.txt
+      - name: Verify training code contracts
+        run: python -m unittest discover -s training/tests -p 'test_*.py'
+      - name: Download complete full-band training tracks
+        run: >-
+          python training/download_slakh_subset.py
+          --output training/data/slakh-subset
+          --tracks Track00018,Track00019,Track00020,Track00021,Track00022
+          --max-bytes 750000000
+          --mode audio
+      - name: Train four-stem model with low-frequency emphasis
+        run: >-
+          python training/train_multistem_mask.py
+          --data training/data/slakh-subset
+          --epochs ${{ inputs.epochs }}
+          --output training/checkpoints/multistem-mask.pt
+          | tee training/training-log.jsonl
+      - name: Export candidate ONNX model
+        run: >-
+          python training/export_multistem_onnx.py
+          --checkpoint training/checkpoints/multistem-mask.pt
+          --output training/checkpoints/multistem-mask.onnx
+      - name: Gate candidate on validation loss and runtime contract
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+          import numpy as np
+          import onnxruntime as ort
+
+          metrics_path = Path("training/checkpoints/multistem-mask.json")
+          metrics = json.loads(metrics_path.read_text())
+          improvement = float(metrics["validationImprovementPercent"])
+          if not math.isfinite(improvement) or improvement <= 0:
+              raise SystemExit(f"Candidate did not improve held-out validation loss: {improvement}")
+
+          model_path = "training/checkpoints/multistem-mask.onnx"
+          session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+          magnitude = np.ones((1, 1, 513, 64), dtype=np.float32)
+          stems = session.run(["stems"], {"magnitude": magnitude})[0]
+          if stems.shape != (1, 4, 513, 64):
+              raise SystemExit(f"Unexpected ONNX output shape: {stems.shape}")
+          if not np.isfinite(stems).all() or (stems < 0).any():
+              raise SystemExit("ONNX output contains invalid magnitudes")
+          if not np.allclose(stems.sum(axis=1), magnitude[:, 0], rtol=1e-4, atol=1e-5):
+              raise SystemExit("Four stems do not reconstruct the input magnitude")
+          print(json.dumps({"validationImprovementPercent": improvement, "onnxShape": list(stems.shape)}))
+          PY
+      - name: Upload candidate checkpoint, metrics, and ONNX
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slakh-full-band-candidate-${{ github.run_id }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            training/checkpoints/multistem-mask.pt
+            training/checkpoints/multistem-mask.json
+            training/checkpoints/multistem-mask.onnx
+            training/training-log.jsonl
+            training/data/slakh-subset/subset-manifest.json
