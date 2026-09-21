@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 import random
@@ -120,6 +121,8 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("training/checkpoints/multistem-mask.pt"))
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=2)
+    parser.add_argument("--learning-rate", type=float, default=2e-4)
+    parser.add_argument("--resume", type=Path)
     parser.add_argument("--seed", type=int, default=2100)
     args = parser.parse_args()
     torch.manual_seed(args.seed); random.seed(args.seed)
@@ -133,10 +136,18 @@ def main() -> int:
     validation_loader = DataLoader(SlakhFourStem(validation, samples_per_track=3, random_offsets=False), batch_size=args.batch_size)
     device = torch.device("mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu")
     model = build_multistem_mask_model(torch).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
+    resumed_from = None
+    if args.resume:
+        state = torch.load(args.resume, map_location=device, weights_only=True)
+        model.load_state_dict(state["model"])
+        resumed_from = str(args.resume)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=1e-4)
     window = torch.hann_window(1024, device=device); history = []
     baseline_validation = validation_loss(model, validation_loader, device, window)
-    print(json.dumps({"epoch": 0, "validationLoss": baseline_validation, "kind": "untrainedBaseline"}))
+    print(json.dumps({"epoch": 0, "validationLoss": baseline_validation, "kind": "resumeBaseline" if resumed_from else "untrainedBaseline", "resumedFrom": resumed_from}))
+    best_validation = baseline_validation
+    best_epoch = 0
+    best_state = copy.deepcopy(model.state_dict())
     for epoch in range(args.epochs):
         model.train(); total = 0.0
         for mixture, stems in train_loader:
@@ -146,10 +157,15 @@ def main() -> int:
             optimizer.zero_grad(); loss.backward(); optimizer.step(); total += float(loss.detach())
         metrics = {"epoch": epoch + 1, "trainingLoss": total / len(train_loader), "validationLoss": validation_loss(model, validation_loader, device, window)}
         history.append(metrics); print(json.dumps(metrics))
+        if metrics["validationLoss"] < best_validation:
+            best_validation = metrics["validationLoss"]
+            best_epoch = epoch + 1
+            best_state = copy.deepcopy(model.state_dict())
+    model.load_state_dict(best_state)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({"model": model.state_dict(), "stems": STEM_NAMES, "sample_rate": 16000, "n_fft": 1024, "hop_length": 256, "history": history}, args.output)
-    improvement = 100 * (baseline_validation - history[-1]["validationLoss"]) / baseline_validation
-    args.output.with_suffix(".json").write_text(json.dumps({"dataset": "Slakh2100 subset", "trainingTracks": [p.name for p in training], "validationTracks": [p.name for p in validation], "frequencyWeighting": {"0-250Hz": 2.25, "250-4000Hz": 1.25, "4000-8000Hz": 1.10}, "baselineValidationLoss": baseline_validation, "validationImprovementPercent": improvement, "metrics": history}, indent=2))
+    torch.save({"model": model.state_dict(), "stems": STEM_NAMES, "sample_rate": 16000, "n_fft": 1024, "hop_length": 256, "history": history, "selected_epoch": best_epoch}, args.output)
+    improvement = 100 * (baseline_validation - best_validation) / baseline_validation
+    args.output.with_suffix(".json").write_text(json.dumps({"dataset": "Slakh2100 subset", "trainingTracks": [p.name for p in training], "validationTracks": [p.name for p in validation], "frequencyWeighting": {"0-250Hz": 2.25, "250-4000Hz": 1.25, "4000-8000Hz": 1.10}, "resumedFrom": resumed_from, "learningRate": args.learning_rate, "baselineValidationLoss": baseline_validation, "selectedEpoch": best_epoch, "selectedValidationLoss": best_validation, "validationImprovementPercent": improvement, "metrics": history}, indent=2))
     return 0
 
 

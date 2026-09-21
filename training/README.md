@@ -43,6 +43,11 @@ the candidate and current production ONNX on the exact same held-out track. It
 saves the checkpoint, metrics, comparison, logs, and ONNX model as a 14-day
 artifact. It never overwrites the production model automatically.
 
+Hosted runs resume from the checked-in production checkpoint at a conservative
+learning rate. The trainer retains the epoch with the lowest held-out loss,
+rather than blindly exporting the final epoch, so additional training cannot
+replace a better intermediate candidate.
+
 The default subset mode downloads the mixture, metadata, and every rendered
 audio stem, while skipping MIDI files that the separator does not consume. The
 compact mask model learns bass, drums, vocals, and other across the full audible
