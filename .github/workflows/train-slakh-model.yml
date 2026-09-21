@@ -1,6 +1,10 @@
 name: Train Slakh full-band model
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/training-trigger"
   workflow_dispatch:
     inputs:
       epochs:
