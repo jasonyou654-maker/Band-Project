@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 from typing import Callable, Protocol
+import wave
 
 from .contracts import AudioAsset, TranscriptionRequest
 
@@ -55,33 +56,33 @@ class FfmpegAudioPreprocessor:
         self.ffprobe_command = os.getenv("FFPROBE_COMMAND", "ffprobe")
 
     def normalize(self, request: TranscriptionRequest, source_path: Path) -> NormalizedAudio:
-        if not shutil.which(self.ffmpeg_command) or not shutil.which(self.ffprobe_command):
-            raise RuntimeError("ffmpeg and ffprobe are required for audio normalization.")
+        if not shutil.which(self.ffmpeg_command):
+            raise RuntimeError("ffmpeg is required for audio normalization.")
         self.output_directory.mkdir(parents=True, exist_ok=True)
         output_path = self.output_directory / "normalized-stereo-44100.wav"
         model_input_path = self.output_directory / "model-input-mono-22050.wav"
-        probe = self.command_runner(
-            [
-                self.ffprobe_command, "-v", "error", "-select_streams", "a:0",
-                "-show_entries", "stream=sample_rate,channels:format=duration",
-                "-of", "json", str(source_path),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if probe.returncode != 0:
-            raise RuntimeError(f"ffprobe could not read audio: {(probe.stderr or probe.stdout)[-500:]}")
-        try:
-            info = json.loads(probe.stdout)
-            stream = info["streams"][0]
-            duration = float(info["format"]["duration"])
-            int(stream["sample_rate"])
-            int(stream["channels"])
-        except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise RuntimeError("ffprobe returned incomplete audio metadata.") from error
-        if duration <= 0:
-            raise RuntimeError("Audio duration must be positive.")
+        duration: float | None = None
+        if shutil.which(self.ffprobe_command):
+            probe = self.command_runner(
+                [
+                    self.ffprobe_command, "-v", "error", "-select_streams", "a:0",
+                    "-show_entries", "stream=sample_rate,channels:format=duration",
+                    "-of", "json", str(source_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if probe.returncode != 0:
+                raise RuntimeError(f"ffprobe could not read audio: {(probe.stderr or probe.stdout)[-500:]}")
+            try:
+                info = json.loads(probe.stdout)
+                stream = info["streams"][0]
+                duration = float(info["format"]["duration"])
+                int(stream["sample_rate"])
+                int(stream["channels"])
+            except (KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
+                raise RuntimeError("ffprobe returned incomplete audio metadata.") from error
         render = self.command_runner(
             [
                 self.ffmpeg_command, "-y", "-i", str(source_path), "-vn",
@@ -94,6 +95,14 @@ class FfmpegAudioPreprocessor:
         )
         if render.returncode != 0 or not output_path.exists():
             raise RuntimeError(f"ffmpeg could not normalize audio: {(render.stderr or render.stdout)[-500:]}")
+        if duration is None:
+            try:
+                with wave.open(str(output_path), "rb") as normalized_wave:
+                    duration = normalized_wave.getnframes() / normalized_wave.getframerate()
+            except (OSError, EOFError, wave.Error, ZeroDivisionError) as error:
+                raise RuntimeError("Normalized audio has incomplete metadata.") from error
+        if duration <= 0:
+            raise RuntimeError("Audio duration must be positive.")
         # Basic Pitch is more vulnerable to sustained low-frequency rumble and
         # stationary hiss than the beat tracker or a stem separator. Make a
         # *gentle* model-only copy: high/low cuts remove content outside most
