@@ -42,7 +42,10 @@ def main() -> int:
     if len(tracks) < 2:
         raise RuntimeError("At least two complete Slakh tracks are required for model comparison.")
     validation = tracks[-max(1, len(tracks) // 5):]
-    loader = DataLoader(SlakhFourStem(validation, samples_per_track=3, random_offsets=False), batch_size=2)
+    # The production ONNX contract fixes the batch dimension at one. Compare
+    # both models with that exact runtime shape rather than relying on the
+    # training loader's larger batch size.
+    loader = DataLoader(SlakhFourStem(validation, samples_per_track=3, random_offsets=False), batch_size=1)
     window = torch.hann_window(1024)
     baseline_loss = model_loss(args.baseline, loader, window)
     candidate_loss = model_loss(args.candidate, loader, window)
