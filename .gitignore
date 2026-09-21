@@ -48,6 +48,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.codespaces-runtime/
 
 # Bundled local optical music recognition runtime and temporary conversions
 /tools/Audiveris.app/

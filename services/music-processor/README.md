@@ -106,8 +106,8 @@ upload has returned notes and MusicXML from Cloud Run.
 
 For a temporary review without a payment method, open this repository on a
 personal GitHub account and choose **Code → Codespaces → Create codespace on
-main**. The included development configuration supplies Docker and forwards a
-temporary web app on port 3000. In the terminal, run:
+main**. The included development configuration forwards a temporary web app on
+port 3000. Docker is not required. In the terminal, run:
 
 ```bash
 ./scripts/run-codespaces-sample.sh
@@ -118,6 +118,11 @@ Wait until the terminal reports the web address. Open the public URL for port
 processor directly, so no GitHub Pages configuration is changed. The sample
 exists only while the Codespace is running; stop it after testing to preserve
 the included GitHub quota.
+
+The first launch creates a cached Python environment; later launches reuse it.
+To prepare the same Codespace for CPU training, run
+`./scripts/setup-codespaces-training.sh`. Training data and checkpoints remain
+gitignored and must stay within the account's Codespaces storage quota.
 
 The processor runtime is Python 3.11. Basic Pitch 0.4.0 does not support a
 native Apple Silicon Python 3.12 installation because of its TensorFlow macOS

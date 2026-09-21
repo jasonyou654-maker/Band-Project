@@ -1,9 +1,6 @@
 {
   "name": "BandProject sample processor",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
-  },
   "forwardPorts": [3000, 4318],
   "portsAttributes": {
     "3000": {
@@ -14,7 +11,7 @@
     "4318": {
       "label": "BandProject music processor",
       "onAutoForward": "notify",
-      "visibility": "public"
+      "visibility": "private"
     }
   }
 }
