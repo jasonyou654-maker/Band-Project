@@ -56,6 +56,8 @@ jobs:
           python training/train_multistem_mask.py
           --data training/data/slakh-subset
           --epochs ${{ inputs.epochs }}
+          --resume services/music-processor/models/multistem-mask.pt
+          --learning-rate 0.00001
           --output training/checkpoints/multistem-mask.pt
           | tee training/training-log.jsonl
       - name: Export candidate ONNX model
