@@ -90,6 +90,13 @@ jobs:
               raise SystemExit("Four stems do not reconstruct the input magnitude")
           print(json.dumps({"validationImprovementPercent": improvement, "onnxShape": list(stems.shape)}))
           PY
+      - name: Compare candidate with production on the same held-out track
+        run: >-
+          python training/compare_multistem_models.py
+          --data training/data/slakh-subset
+          --candidate training/checkpoints/multistem-mask.onnx
+          --baseline services/music-processor/models/multistem-mask.onnx
+          --output training/checkpoints/model-comparison.json
       - name: Upload candidate checkpoint, metrics, and ONNX
         if: always()
         uses: actions/upload-artifact@v4
@@ -101,5 +108,6 @@ jobs:
             training/checkpoints/multistem-mask.pt
             training/checkpoints/multistem-mask.json
             training/checkpoints/multistem-mask.onnx
+            training/checkpoints/model-comparison.json
             training/training-log.jsonl
             training/data/slakh-subset/subset-manifest.json

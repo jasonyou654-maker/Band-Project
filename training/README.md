@@ -38,9 +38,10 @@ validation loss. A run with only one track is rejected, preventing a misleading
 For training that does not depend on a laptop or Render, run the GitHub Actions
 workflow **Train Slakh full-band model**. It restores a bounded dataset cache,
 trains on a hosted CPU runner, rejects candidates that do not improve held-out
-validation loss, verifies the exported four-stem ONNX contract, and saves the
-checkpoint, metrics, logs, and ONNX model as a 14-day artifact. It never
-overwrites the production model automatically.
+validation loss, verifies the exported four-stem ONNX contract, then compares
+the candidate and current production ONNX on the exact same held-out track. It
+saves the checkpoint, metrics, comparison, logs, and ONNX model as a 14-day
+artifact. It never overwrites the production model automatically.
 
 The default subset mode downloads the mixture, metadata, and every rendered
 audio stem, while skipping MIDI files that the separator does not consume. The
