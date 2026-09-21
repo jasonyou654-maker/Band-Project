@@ -1,6 +1,10 @@
 name: Train Slakh full-band model
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/training-trigger"
   workflow_dispatch:
     inputs:
       epochs:
@@ -55,7 +59,7 @@ jobs:
         run: >-
           python training/train_multistem_mask.py
           --data training/data/slakh-subset
-          --epochs ${{ inputs.epochs }}
+          --epochs ${{ inputs.epochs || '8' }}
           --resume services/music-processor/models/multistem-mask.pt
           --learning-rate 0.00001
           --output training/checkpoints/multistem-mask.pt
