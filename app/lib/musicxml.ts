@@ -32,7 +32,7 @@ export function noteEventsToMusicXml(title: string, instrument: string, bpm: num
     const attributes = index === 0 ? `<attributes><divisions>${divisions}</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>${instrument.toLowerCase().includes("bass") ? "F" : "G"}</sign><line>${instrument.toLowerCase().includes("bass") ? "4" : "2"}</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${Math.round(bpm)}</per-minute></metronome></direction-type><sound tempo="${Math.round(bpm)}"/></direction>` : "";
     return `<measure number="${index + 1}">${attributes}${notes.join("")}</measure>`;
   }).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>BandProject MusicXML pipeline</software></encoding></identification><part-list><score-part id="P1"><part-name>${escapeXml(instrument)}</part-name></score-part></part-list><part id="P1">${measures}</part></score-partwise>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>Studio17 MusicXML pipeline</software></encoding></identification><part-list><score-part id="P1"><part-name>${escapeXml(instrument)}</part-name></score-part></part-list><part id="P1">${measures}</part></score-partwise>`;
 }
 
 export function isMusicXml(value: string) {

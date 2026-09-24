@@ -7,7 +7,7 @@ import unittest
 
 
 MODULE_PATH = Path(__file__).parents[1] / "evaluate.py"
-SPEC = importlib.util.spec_from_file_location("bandproject_evaluate", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("studio17_evaluate", MODULE_PATH)
 assert SPEC and SPEC.loader
 evaluation = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = evaluation

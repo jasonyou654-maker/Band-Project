@@ -1,8 +1,8 @@
 import { canAccessOwner, requirePrivateTranscriptionUser } from "@/app/lib/transcription-access";
 import { privateObjectKey, privateTranscriptionStore } from "@/app/lib/private-transcription-storage";
 import { getDb } from "@/db";
-import { scoreRevisions, transcriptionJobs } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { recentItems, scoreRevisions, transcriptionJobs } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +30,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   const job = (await getDb().select().from(transcriptionJobs).where(eq(transcriptionJobs.id, id))).at(0);
   if (!job) return Response.json({ error: "Transcription task not found." }, { status: 404 });
   if (!canAccessOwner(user, job.ownerEmail)) return Response.json({ error: "You may only view your own transcription tasks." }, { status: 403 });
+  const viewedAt = Date.now();
+  await getDb().insert(recentItems).values({ userEmail: user.email.toLowerCase(), itemType: "transcription", itemId: id, viewedAt })
+    .onConflictDoUpdate({ target: [recentItems.userEmail, recentItems.itemType, recentItems.itemId], set: { viewedAt } });
   if (job.resultObjectKey) {
     const stored = await privateTranscriptionStore().get(job.resultObjectKey);
     if (stored) return Response.json(JSON.parse(await stored.text()), { headers: { "Cache-Control": "no-store" } });
@@ -80,6 +83,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
     if (keys.length) await privateTranscriptionStore().delete(keys);
     await getDb().batch([
       getDb().delete(scoreRevisions).where(eq(scoreRevisions.jobId, id)),
+      getDb().delete(recentItems).where(and(eq(recentItems.itemType, "transcription"), eq(recentItems.itemId, id))),
       getDb().delete(transcriptionJobs).where(eq(transcriptionJobs.id, id)),
     ]);
     return Response.json({ deleted: true, id });

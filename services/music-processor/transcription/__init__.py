@@ -1,4 +1,4 @@
-"""Stable domain contracts for BandProject audio transcription."""
+"""Stable domain contracts for Studio17 audio transcription."""
 
 from .contracts import (
     AudioAsset,

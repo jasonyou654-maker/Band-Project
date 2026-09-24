@@ -16,13 +16,13 @@ async function worker() {
   return (await import(workerUrl.href)).default;
 }
 
-test("server renders the BandProject community", async () => {
+test("server renders the Studio17 community", async () => {
   const response = await render();
   const html = await response.text();
   assert.equal(response.status, 200);
-  assert.match(html, /<title>BandProject/i);
+  assert.match(html, /<title>Studio17/i);
   assert.match(html, /Play something/);
-  assert.match(html, /AI Analysis/i);
+  assert.match(html, /AI Transcription/i);
   assert.match(html, /Sheets for your next session/i);
   assert.doesNotMatch(html, /codex-preview/i);
 });

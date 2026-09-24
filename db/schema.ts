@@ -1,4 +1,14 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+
+export const users = sqliteTable("users", {
+  email: text("email").primaryKey(),
+  username: text("username").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio").notNull().default(""),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
 
 export const sheets = sqliteTable("sheets", {
   id: integer("id").primaryKey(),
@@ -17,6 +27,38 @@ export const sheets = sqliteTable("sheets", {
   processingProvider: text("processing_provider").notNull(),
   processingWarnings: text("processing_warnings").notNull(),
   sourceObjectKey: text("source_object_key"),
+  ownerEmail: text("owner_email"),
+  arrangement: text("arrangement").notNull().default("Solo arrangement"),
+  tags: text("tags").notNull().default("[]"),
+  description: text("description").notNull().default(""),
+  rightsDeclaration: text("rights_declaration").notNull().default("Personal / Educational Use"),
+  visibility: text("visibility").notNull().default("public"),
+  downloads: integer("downloads").notNull().default(0),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull().default(0),
+  deletedAt: integer("deleted_at"),
+});
+
+export const favorites = sqliteTable("favorites", {
+  userEmail: text("user_email").notNull(),
+  sheetId: integer("sheet_id").notNull(),
+  createdAt: integer("created_at").notNull(),
+}, table => [primaryKey({ columns: [table.userEmail, table.sheetId] })]);
+
+export const recentItems = sqliteTable("recent_items", {
+  userEmail: text("user_email").notNull(),
+  itemType: text("item_type").notNull(),
+  itemId: text("item_id").notNull(),
+  viewedAt: integer("viewed_at").notNull(),
+}, table => [primaryKey({ columns: [table.userEmail, table.itemType, table.itemId] })]);
+
+export const contentReports = sqliteTable("content_reports", {
+  id: text("id").primaryKey(),
+  reporterEmail: text("reporter_email").notNull(),
+  sheetId: integer("sheet_id").notNull(),
+  reason: text("reason").notNull(),
+  details: text("details").notNull().default(""),
+  status: text("status").notNull().default("open"),
   createdAt: integer("created_at").notNull(),
 });
 

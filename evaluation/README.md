@@ -1,4 +1,4 @@
-# BandProject transcription evaluation
+# Studio17 transcription evaluation
 
 This directory is the quality gate for audio-to-score work. It evaluates note
 events before MIDI or MusicXML engraving so model quality is not confused with

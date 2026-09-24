@@ -1,4 +1,4 @@
-"""BandProject server-side music processor.
+"""Studio17 server-side music processor.
 
 Runs Audiveris for score images/PDFs and Spotify Basic Pitch for audio. This
 service is intentionally separate from the web app so either engine can be
@@ -35,16 +35,16 @@ from transcription.pipeline import TranscriptionPipeline
 from transcription.score import GridRhythmQuantizer, Music21ScoreExporter, NativeScoreExporter
 from transcription.musical_analysis import summarize_transcription
 
-app = FastAPI(title="BandProject Music Processor", version="0.1.0")
+app = FastAPI(title="Studio17 Music Processor", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("WEB_ORIGINS", "http://localhost:3000,http://localhost:3001").split(","), allow_methods=["POST", "GET"], allow_headers=["*"])
 
 AUDIVERIS_COMMAND = os.getenv("AUDIVERIS_COMMAND", "audiveris")
 MAX_SCORE_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_BYTES = 50 * 1024 * 1024
-OMR_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bandproject-omr")
+OMR_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio17-omr")
 OMR_JOBS: dict[str, dict] = {}
 OMR_JOBS_LOCK = Lock()
-TRANSCRIPTION_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bandproject-transcription")
+TRANSCRIPTION_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="studio17-transcription")
 TRANSCRIPTION_JOBS: dict[str, dict] = {}
 TRANSCRIPTION_JOBS_LOCK = Lock()
 TARGET_INSTRUMENTS = {"guitar", "bass", "piano", "vocals", "drums", "chords", "lead-sheet", "auto"}
@@ -143,7 +143,7 @@ def recognize_with_audiveris(content: bytes, suffix: str) -> dict:
     executable = shutil.which(AUDIVERIS_COMMAND)
     if not executable:
         raise HTTPException(503, "Audiveris is not installed in the processing service image.")
-    with tempfile.TemporaryDirectory(prefix="bandproject-omr-") as directory:
+    with tempfile.TemporaryDirectory(prefix="studio17-omr-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
         output = work / "output"
@@ -248,7 +248,7 @@ def transcribe_audio(content: bytes, suffix: str, filename: str, target_instrume
             import music21  # noqa: F401
         except ImportError as error:
             raise HTTPException(503, "music21 is not installed in the processing service.") from error
-    with tempfile.TemporaryDirectory(prefix="bandproject-audio-") as directory:
+    with tempfile.TemporaryDirectory(prefix="studio17-audio-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
         source.write_bytes(content)
@@ -300,7 +300,7 @@ def analyze_audio_signal(content: bytes, suffix: str) -> dict:
     Keep this endpoint independent of librosa/numba: importing that stack on a
     512 MB instance can terminate the whole worker before it returns a response.
     """
-    with tempfile.TemporaryDirectory(prefix="bandproject-analysis-") as directory:
+    with tempfile.TemporaryDirectory(prefix="studio17-analysis-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
         source.write_bytes(content)
@@ -383,7 +383,7 @@ def analyze_audio_signal_with_librosa(content: bytes, suffix: str) -> dict:
         import numpy as np
     except ImportError as error:
         raise HTTPException(503, "librosa is not installed in the processing service.") from error
-    with tempfile.TemporaryDirectory(prefix="bandproject-analysis-") as directory:
+    with tempfile.TemporaryDirectory(prefix="studio17-analysis-") as directory:
         work = Path(directory)
         source = work / f"source{suffix}"
         source.write_bytes(content)

@@ -129,10 +129,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": "本地识谱服务发生错误。", "detail": str(error)})
 
     def log_message(self, format: str, *args: object) -> None:
-        print(f"[BandProject OMR] {format % args}")
+        print(f"[Studio17 OMR] {format % args}")
 
 
 if __name__ == "__main__":
     prepare_runtime()
-    print("BandProject OMR service ready at http://127.0.0.1:4318")
+    print("Studio17 OMR service ready at http://127.0.0.1:4318")
     ThreadingHTTPServer(("127.0.0.1", 4318), Handler).serve_forever()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate BandProject note-event predictions against musician references."""
+"""Evaluate Studio17 note-event predictions against musician references."""
 
 from __future__ import annotations
 
@@ -319,4 +319,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

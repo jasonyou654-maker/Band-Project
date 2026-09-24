@@ -1,6 +1,6 @@
-# BandProject
+# Studio17
 
-BandProject is a data-driven sheet-music community and transcription workspace.
+Studio17 is a data-driven sheet-music community and transcription workspace.
 The web client accepts MusicXML, scanned scores, PDFs, and audio while all
 model/runtime dependencies stay on the server.
 
@@ -52,7 +52,7 @@ processor:
 MUSIC_PROCESSOR_URL=http://music-processor:4318
 ```
 
-End users only open BandProject in a browser. They do not install Python,
+End users only open Studio17 in a browser. They do not install Python,
 Basic Pitch, Audiveris, MuseScore, or any other desktop dependency.
 
 ## Development

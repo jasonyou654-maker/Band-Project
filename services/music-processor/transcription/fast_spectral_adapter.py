@@ -24,7 +24,7 @@ POLYPHONY = {"piano": 4, "chords": 4, "guitar": 3, "auto": 3, "drums": 2}
 
 
 class FastSpectralTranscriber:
-    provider = "BandProject Fast Spectral Notes"
+    provider = "Studio17 Fast Spectral Notes"
 
     @classmethod
     def warm(cls) -> None:

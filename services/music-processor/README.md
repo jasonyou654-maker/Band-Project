@@ -1,4 +1,4 @@
-# BandProject music processor
+# Studio17 music processor
 
 This is the server-only processing tier. Browsers upload score images to the
 Next.js API; the API forwards them here for server-side Audiveris OMR. The
@@ -57,9 +57,9 @@ container.
 Build and run the processor independently from the static website:
 
 ```bash
-docker build -t bandproject-music-processor services/music-processor
+docker build -t studio17-music-processor services/music-processor
 docker run --rm -p 4318:4318 \
-  -e WEB_ORIGINS=https://YOUR_NAME.github.io bandproject-music-processor
+  -e WEB_ORIGINS=https://YOUR_NAME.github.io studio17-music-processor
 ```
 
 ## Production: Google Cloud Run

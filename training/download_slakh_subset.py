@@ -34,7 +34,7 @@ def request_bytes(url: str, attempts: int = 4) -> bytes:
     error: Exception | None = None
     for attempt in range(attempts):
         try:
-            with urlopen(Request(url, headers={"User-Agent": "BandProject-Slakh/1.0"}), timeout=60) as response:
+            with urlopen(Request(url, headers={"User-Agent": "Studio17-Slakh/1.0"}), timeout=60) as response:
                 return response.read()
         except (OSError, URLError) as caught:
             error = caught

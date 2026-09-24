@@ -33,7 +33,7 @@ export class UnavailableOMRProvider implements OMRProvider {
   readonly name = "OMR unavailable";
   async recognize(file: File): Promise<MusicProcessingResult> {
     void file;
-    throw new Error("OMR processor is not configured. Set MUSIC_PROCESSOR_URL to a running BandProject music processor.");
+    throw new Error("OMR processor is not configured. Set MUSIC_PROCESSOR_URL to a running Studio17 music processor.");
   }
 }
 

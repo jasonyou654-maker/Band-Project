@@ -1,5 +1,5 @@
 {
   "schemaVersion": 1,
-  "dataset": { "name": "licensed-instrumental-v1", "purpose": "evaluation", "license": "rights-holder-approved", "owner": "BandProject" },
+  "dataset": { "name": "licensed-instrumental-v1", "purpose": "evaluation", "license": "rights-holder-approved", "owner": "Studio17" },
   "assets": [{ "id": "piano-isolated-001", "split": "validation", "instrument": "piano", "sourceType": "isolated", "audioPath": "private/piano-isolated-001.wav", "referencePath": "private/piano-isolated-001.musicxml", "license": "rights-holder-approved", "consentedForTraining": false }]
 }

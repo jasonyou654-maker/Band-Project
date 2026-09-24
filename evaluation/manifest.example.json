@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "dataset": {
-    "name": "bandproject-smoke-fixture",
+    "name": "studio17-smoke-fixture",
     "version": "1.0.0",
     "split": "development",
     "license": "repository test fixture; not production benchmark data"
@@ -23,4 +23,3 @@
     }
   ]
 }
-

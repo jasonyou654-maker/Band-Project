@@ -36,7 +36,7 @@ export async function recognizeScoreInBrowser(file: File): Promise<MusicProcessi
   groups.sort((a, b) => a.page - b.page || a.staff - b.staff || a.x - b.x);
   return {
     musicXml: groupsToMusicXml(file.name.replace(/\.[^.]+$/, ""), groups),
-    provider: "BandProject Browser OMR",
+    provider: "Studio17 Browser OMR",
     mode: "real",
     warnings: [
       `浏览器 OMR 从 ${pages.length} 页、${staffCount} 组五线谱中识别了 ${groups.reduce((sum, group) => sum + group.pitches.length, 0)} 个音符，并输出 ${new Set(groups.map(group => group.staff)).size} 个声部。`,
@@ -281,7 +281,7 @@ function groupsToMusicXml(title: string, groups: NoteGroup[]): string {
     return `<part id="P${partIndex + 1}">${measures.join("")}</part>`;
   }).join("");
   const partList = staffIds.map((_, index) => `<score-part id="P${index + 1}"><part-name>${index === 0 ? "Treble staff" : "Bass staff"}</part-name></score-part>`).join("");
-  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>BandProject Browser OMR</software></encoding></identification><part-list>${partList}</part-list>${parts}</score-partwise>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><score-partwise version="3.1"><work><work-title>${escapeXml(title)}</work-title></work><identification><encoding><software>Studio17 Browser OMR</software></encoding></identification><part-list>${partList}</part-list>${parts}</score-partwise>`;
 }
 
 function escapeXml(value: string): string {
