@@ -4,6 +4,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { sitePath } from "@/app/lib/site-path";
 import { isMusicXml } from "./lib/musicxml";
 import { NotationRenderer } from "./components/NotationRenderer";
 import type { MusicProcessingResult } from "./lib/providers/types";
@@ -206,14 +207,14 @@ function Nav({ view, go, activity, markRead }: { view: View; go: (v: View) => vo
   const unread = activity.filter(item => item.unread).length;
   return <header className="nav"><Logo onClick={() => go("explore")} /><nav>
     <button className={view === "explore" || view === "sheet" ? "active" : ""} onClick={() => go("explore")}>Explore</button>
-    <Link href="/transcription">AI Transcription</Link>
-    <Link href="/library">My Library</Link>
-    <Link href="/upload">Upload</Link>
+    <Link href={sitePath("/transcription")}>AI Transcription</Link>
+    <Link href={sitePath("/library")}>My Library</Link>
+    <Link href={sitePath("/upload")}>Upload</Link>
   </nav><div className="nav-actions">
     <div className={`nav-search ${searchOpen ? "open" : ""}`}><Icon name="search" size={17}/>{searchOpen && <input autoFocus placeholder="Search Studio17" onKeyDown={e => { if (e.key === "Enter") go("explore"); }}/>}</div>
     <button className="icon-btn" aria-label="Search" onClick={() => setSearchOpen(!searchOpen)}>{searchOpen ? <Icon name="close"/> : <Icon name="search"/>}</button>
     <button className={`icon-btn notice ${unread ? "has-unread" : ""}`} aria-label={`Notifications${unread ? ` (${unread} unread)` : ""}`} onClick={() => { setNotifications(!notifications); if (!notifications) markRead(); }}><Icon name="bell"/></button>
-    <Link className="nav-avatar" href="/account">S17</Link>
+    <Link className="nav-avatar" href={sitePath("/account")}>S17</Link>
     {notifications && <div className="notification-menu"><div><b>Notifications</b><button onClick={() => setNotifications(false)}><Icon name="close" size={15}/></button></div>{activity.length ? activity.map(item=><article key={item.id}><span>MC</span><p>{item.text}<small>{item.time}</small></p></article>) : <p className="notification-empty">没有新的通知。</p>}<button className="mark-read" onClick={() => { markRead(); setNotifications(false); }}>Mark all as read</button></div>}
   </div></header>;
 }
@@ -234,7 +235,7 @@ function Explore({ openSheet, library, likedIds, savedIds, toggleLike, toggleSav
       <div className="quick-links"><span>Trending:</span><button onClick={() => setSearch("SZA")}>SZA</button><button onClick={() => setSearch("Misty")}>Jazz standards</button><button onClick={() => setInstrument("Guitar")}>Guitar</button><button onClick={() => setSearch("")}>New uploads</button></div>
     </section>
     <section className="featured-strip"><div className="feature-art"><div className="vinyl"><span/></div><div className="feature-notes">♪<br/>♩ ♫</div></div><div className="feature-copy"><span className="editor-pick">EDITOR&apos;S PICK · THIS WEEK</span><h2>Neo-soul, without<br/>the guesswork.</h2><p>A beautifully voiced piano arrangement of “Just the Two of Us,” with chord symbols and performance notes.</p><button onClick={() => openSheet(sheets[0])}>View sheet <Icon name="arrow" size={15}/></button></div><div className="feature-stats"><b>824</b><span>musicians liked this</span></div></section>
-    <section className="library"><div className="section-title"><div><span className="kicker">STUDIO17 LIBRARY</span><h2>Sheets for your next session</h2></div><Link className="upload-cta" href="/upload"><Icon name="upload" size={17}/> Upload a sheet</Link></div>
+    <section className="library"><div className="section-title"><div><span className="kicker">STUDIO17 LIBRARY</span><h2>Sheets for your next session</h2></div><Link className="upload-cta" href={sitePath("/upload")}><Icon name="upload" size={17}/> Upload a sheet</Link></div>
       <div className="filters"><select value={instrument} onChange={e => setInstrument(e.target.value)}><option>All instruments</option><option>Piano</option><option>Guitar</option><option>Bass</option><option>Drums</option><option>Voice</option></select><select value={genre} onChange={e => setGenre(e.target.value)}><option>All genres</option><option>R&B</option><option>Jazz</option><option>Rock</option><option>Pop</option></select><select value={difficulty} onChange={e => setDifficulty(e.target.value)}><option>All levels</option><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select><select><option>Any key</option><option>C major</option><option>D major</option><option>F minor</option></select><span className="result-count">{filtered.length} sheets</span></div>
       {filtered.length ? <div className="sheet-grid">{filtered.map(s => <SheetCard key={s.id} sheet={s} open={() => openSheet(s)} liked={likedIds.includes(s.id)} saved={savedIds.includes(s.id)} toggleLike={() => toggleLike(s)} toggleSave={() => toggleSave(s)}/>)}</div> : <div className="empty"><Icon name="music" size={28}/><h3>No sheets found</h3><p>Try a different search or clear your filters.</p><button onClick={() => { setSearch(""); setInstrument("All instruments"); setGenre("All genres"); setDifficulty("All levels"); }}>Clear filters</button></div>}
     </section>
@@ -403,6 +404,6 @@ export default function Home() {
   function toggleSave(sheet:Sheet){const added=!savedIds.includes(sheet.id);const next=added?[sheet.id,...savedIds]:savedIds.filter(id=>id!==sheet.id);setSavedIds(next);localStorage.setItem("studio17-saved",JSON.stringify(next));record(added?`已收藏「${sheet.title}」，已加入 My saving`:`已从 My saving 移除「${sheet.title}」`)}
   async function publish(sheet:Sheet){const persistable=Object.fromEntries(Object.entries(sheet).filter(([key])=>key!=="sourcePreviewUrl")) as Sheet;setUploads(current=>[sheet,...current]);try{const current=JSON.parse(localStorage.getItem("studio17-uploads")||localStorage.getItem("bandproject-uploads")||"[]") as Sheet[];localStorage.setItem("studio17-uploads",JSON.stringify([persistable,...current.filter(item=>item.id!==sheet.id)]))}catch{/* The current-session preview remains available if storage is full. */}if(!isStaticSite)try{await fetch("/api/sheets",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(persistable)})}catch{/* Browser storage remains the preview fallback. */}}
   function go(v: View){ setView(v); window.scrollTo({top:0,behavior:"smooth"}); }
-  function openSheet(s: Sheet){ if(s.createdAt){window.location.href=`/sheets/${s.id}`;return} setSelected(s); go("sheet"); }
+  function openSheet(s: Sheet){ if(s.createdAt){window.location.href=sitePath(`/sheets/${s.id}`);return} setSelected(s); go("sheet"); }
   return <><Nav view={view} go={go} activity={activity} markRead={()=>setActivity(current=>current.map(item=>({...item,unread:false})))} />{toast&&<div className="action-toast" role="status"><Icon name="check" size={16}/>{toast}</div>}{view === "explore" && <Explore openSheet={openSheet} library={library} likedIds={likedIds} savedIds={savedIds} toggleLike={toggleLike} toggleSave={toggleSave}/>} {view === "sheet" && <SheetDetail sheet={selected} back={()=>go("explore")} liked={likedIds.includes(selected.id)} saved={savedIds.includes(selected.id)} toggleLike={()=>toggleLike(selected)} toggleSave={()=>toggleSave(selected)}/>} {view === "upload" && <Upload done={()=>go("explore")} publish={publish}/>} {view === "analysis" && <AnalysisV2/>} {view === "profile" && <Profile openSheet={openSheet} uploads={uploads} library={library} likedIds={likedIds} savedIds={savedIds} toggleLike={toggleLike} toggleSave={toggleSave}/>}<footer><Logo onClick={()=>go("explore")}/><p>Made for the next generation of musicians.</p><span>© 2026 Studio17</span></footer></>;
 }
