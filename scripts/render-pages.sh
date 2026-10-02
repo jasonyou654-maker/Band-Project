@@ -12,9 +12,13 @@ if [ ! -s "$output_dir/index.html" ]; then
   exit 1
 fi
 
-# GitHub Pages adds `/Band-Project` externally, while Vinext emits absolute
-# asset URLs from `/assets`. Use a temporary file so this works on both macOS
-# BSD sed and Linux GNU sed.
-tmp_file="$output_dir/index.html.tmp"
-sed 's#"/assets/#"/Band-Project/assets/#g' "$output_dir/index.html" >"$tmp_file"
-mv "$tmp_file" "$output_dir/index.html"
+# GitHub Pages cannot run the account, storage, and OMR APIs. Forward every
+# static route to the complete hosted app, preserving the requested path.
+redirect_page="$output_dir/404.html"
+cat >"$redirect_page" <<'EOF'
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Opening BandProject</title></head><body><p>Opening the full BandProject score platform…</p><p><a href="https://studio17.callumyou654.chatgpt.site/">Continue to BandProject</a></p><script>
+const path = location.pathname.replace(/^\/Band-Project(?=\/|$)/, "") || "/";
+location.replace("https://studio17.callumyou654.chatgpt.site" + path + location.search + location.hash);
+</script></body></html>
+EOF
+find "$output_dir" -name '*.html' ! -name '404.html' -type f -exec cp "$redirect_page" '{}' \;
